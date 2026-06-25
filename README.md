@@ -18,9 +18,10 @@ required.
   payment calls are never touched.
 - Key is persisted in `chrome.storage.local`; clearing the field disables
   injection (rule removed).
-- **Harvest button**: opens the rembayung widget, waits for Cloudflare to
-  clear, clicks through to the booking flow, then grabs the latest live
-  `venue-api-key` and loads it into the field for you.
+- **Harvest button**: if you're already on a venue's widget page, harvests
+  there — no redirect. Otherwise opens the rembayung widget as a default.
+  Waits for Cloudflare to clear, clicks through to the booking flow, then
+  grabs the latest live `venue-api-key` and loads it into the field.
 
 ## Why declarativeNetRequest instead of webRequest
 
