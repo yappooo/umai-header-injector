@@ -87,6 +87,37 @@ async function startHarvest() {
   }, CF_TIMEOUT_MS);
 }
 
+function clickReserveButtonInPage() {
+  return new Promise((resolve) => {
+    let tries = 0;
+    const iv = setInterval(() => {
+      tries++;
+      const btn = Array.from(document.querySelectorAll("button")).find((b) =>
+        (b.textContent || "").trim().toLowerCase().includes("make a reservation")
+      );
+      if (btn) {
+        btn.click();
+        clearInterval(iv);
+        resolve(true);
+      } else if (tries > 20) {
+        clearInterval(iv);
+        resolve(false);
+      }
+    }, 500);
+  });
+}
+
+async function autoClickReserve(tabId) {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: clickReserveButtonInPage,
+    });
+  } catch (e) {
+    // tab may have navigated/closed — harvest timeout will catch it
+  }
+}
+
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
   const { harvest } = await chrome.storage.local.get("harvest");
   if (!harvest || harvest.tabId !== tabId || !changeInfo.title) return;
@@ -94,6 +125,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
   const cf = t.includes("just a moment") || t.includes("checking your browser");
   if (!cf && harvest.status === "waiting-cf") {
     await setHarvest({ status: "capturing" });
+    autoClickReserve(tabId);
   }
 });
 
