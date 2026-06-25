@@ -34,10 +34,23 @@
         font-weight: bold;
         cursor: pointer;
       }
-      #status {
+      button.secondary {
+        background: #004d40;
+      }
+      button:disabled {
+        background: #333;
+        color: #777;
+        cursor: default;
+      }
+      #status,
+      #harvestStatus {
         margin-top: 8px;
         font-size: 11px;
         min-height: 14px;
+      }
+      hr {
+        border-color: #1a1a1a;
+        margin: 12px 0;
       }
     </style>
   </head>
@@ -46,6 +59,10 @@
     <input id="apiKey" type="text" placeholder="venue-api-key" />
     <button id="save">SAVE & ACTIVATE</button>
     <div id="status"></div>
+    <hr />
+    <button id="harvest" class="secondary">HARVEST LATEST KEY (rembayung)</button>
+    <div id="harvestStatus"></div>
+    <button id="useHarvested" style="display:none">USE THIS KEY</button>
     <script src="popup.js"></script>
   </body>
 </html>
