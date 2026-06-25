@@ -4,6 +4,8 @@ Chrome MV3 extension that injects a `venue-api-key` header into UMAI
 reservation widget requests, no separate browser-automation process
 required.
 
+![popup](screenshots/popup.png)
+
 ## What it does
 
 - Popup lets you paste a `venue-api-key`.
@@ -32,6 +34,17 @@ it's not page-script-visible.
 3. Click the extension icon, paste your `venue-api-key`, **SAVE & ACTIVATE**.
 4. Visit `https://reservation.umai.io/en/widget/<slug>` — requests now carry
    the header automatically.
+
+## How to use
+
+1. Get the venue's `venue-api-key` (from your account/venue dashboard, or by
+   inspecting network requests on the widget page).
+2. Click the extension icon in the Chrome toolbar to open the popup shown
+   above.
+3. Paste the key into the `venue-api-key` field.
+4. Click **SAVE & ACTIVATE** — status line confirms injection is ON.
+5. Reload or open the widget page; every `umai.io` / `letsumai.com` request
+   now carries the header. Clear the field + save to turn injection back off.
 
 ## Scope
 
