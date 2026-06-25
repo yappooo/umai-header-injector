@@ -18,12 +18,9 @@ required.
   payment calls are never touched.
 - Key is persisted in `chrome.storage.local`; clearing the field disables
   injection (rule removed).
-- **Harvest button**: opens `reservation.umai.io/en/widget/rembayung` in a
-  new tab (excluded from our own injection rule so it isn't masked), waits
-  for the Cloudflare "Just a moment..." title to clear, then sniffs the
-  `venue-api-key` header off the widget's own real request via
-  `webRequest.onSendHeaders`. One click in the popup loads that fresh key
-  into the field and activates it.
+- **Harvest button**: opens the rembayung widget, waits for Cloudflare to
+  clear, then grabs the latest live `venue-api-key` and loads it into the
+  field for you.
 
 ## Why declarativeNetRequest instead of webRequest
 
