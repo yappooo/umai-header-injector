@@ -70,25 +70,13 @@ async function setHarvest(patch) {
   return next;
 }
 
-const WIDGET_URL_RE = /^https:\/\/reservation\.umai\.io\/en\/widget\//;
-
 async function startHarvest() {
   const apiKey = await currentApiKey();
   await setHarvest({ status: "opening", key: "", tabId: null, startedAt: Date.now() });
 
-  // If the active tab is already on a venue's widget page, harvest there —
-  // don't redirect the user off whatever venue they're already looking at.
-  const [active] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  const tab =
-    active && WIDGET_URL_RE.test(active.url || "")
-      ? active
-      : await chrome.tabs.create({ url: HARVEST_URL, active: true });
-
+  const tab = await chrome.tabs.create({ url: HARVEST_URL, active: true });
   await applyRule(apiKey, [tab.id]); // don't let our own rule mask the real key
   await setHarvest({ status: "waiting-cf", tabId: tab.id });
-
-  // Reload so the request we sniff is fresh and unaffected by our own rule.
-  await chrome.tabs.reload(tab.id);
 
   setTimeout(async () => {
     const { harvest } = await chrome.storage.local.get("harvest");
