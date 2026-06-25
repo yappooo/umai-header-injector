@@ -1,10 +1,8 @@
 # UMAI Venue API Header Injector
 
-Chrome MV3 extension. Port of the `venue-api-key` header-injection trick used
-in [`BypassCloudflare.py`](../Complete%20Code/BypassCloudflare.py) — that
-script ran a CDP-attached Playwright session and used `context.route()` to
-stamp a `venue-api-key` header onto every UMAI request. This extension does
-the same thing natively in Chrome, no CDP/Playwright process required.
+Chrome MV3 extension that injects a `venue-api-key` header into UMAI
+reservation widget requests, no separate browser-automation process
+required.
 
 ## What it does
 
@@ -15,8 +13,7 @@ the same thing natively in Chrome, no CDP/Playwright process required.
   - sets `Origin: https://reservation.umai.io`
   - sets `Referer: https://reservation.umai.io/`
 - Requests to `stripe.com` are excluded (`excludedRequestDomains`), so
-  payment calls are never touched — same separation the Python script made
-  with `is_umai and not is_stripe`.
+  payment calls are never touched.
 - Key is persisted in `chrome.storage.local`; clearing the field disables
   injection (rule removed).
 
