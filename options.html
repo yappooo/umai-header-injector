@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>UMAI Hunt Config</title>
+    <style>
+      body {
+        max-width: 520px;
+        margin: 24px auto;
+        background: #0b0b0b;
+        color: #00ff41;
+        font-family: Consolas, monospace;
+        padding: 0 16px 32px;
+      }
+      h1 {
+        font-size: 16px;
+      }
+      h2 {
+        font-size: 12px;
+        margin-top: 24px;
+        border-bottom: 1px solid #1a1a1a;
+        padding-bottom: 4px;
+      }
+      label {
+        display: block;
+        font-size: 11px;
+        margin-top: 10px;
+      }
+      input,
+      select {
+        width: 100%;
+        box-sizing: border-box;
+        background: #111;
+        color: #00ff41;
+        border: 1px solid #00ff41;
+        padding: 6px;
+        font-family: Consolas, monospace;
+        font-size: 12px;
+        margin-top: 2px;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+      }
+      .row > div {
+        flex: 1;
+      }
+      .warning {
+        margin-top: 16px;
+        border: 2px solid #ff9800;
+        background: #2a1a00;
+        color: #ffb74d;
+        padding: 10px;
+        font-size: 11px;
+      }
+      button {
+        margin-top: 20px;
+        width: 100%;
+        background: #1b5e20;
+        color: #fff;
+        border: none;
+        padding: 10px;
+        font-weight: bold;
+        cursor: pointer;
+      }
+      #status {
+        margin-top: 8px;
+        font-size: 11px;
+        min-height: 14px;
+      }
+      input[type="checkbox"] {
+        width: auto;
+        display: inline-block;
+        margin-right: 6px;
+      }
+      .checkboxline {
+        display: flex;
+        align-items: center;
+        margin-top: 10px;
+      }
+      .checkboxline label {
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>UMAI Hunt Configuration</h1>
+
+    <h2>Target</h2>
+    <label>Widget URL</label>
+    <input id="widgetUrl" type="text" placeholder="https://reservation.umai.io/en/widget/rembayung" />
+    <label>Target Date (YYYY-MM-DD)</label>
+    <input id="targetDate" type="date" />
+    <div class="row">
+      <div>
+        <label>Pax</label>
+        <input id="pax" type="number" min="1" value="4" />
+      </div>
+      <div>
+        <label>Poll Interval (sec)</label>
+        <input id="pollInterval" type="number" min="0.3" step="0.1" value="1" />
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Start Hour</label>
+        <input id="startH" type="number" min="0" max="23" value="19" />
+      </div>
+      <div>
+        <label>End Hour</label>
+        <input id="endH" type="number" min="0" max="23" value="21" />
+      </div>
+      <div>
+        <label>Ideal Hour</label>
+        <input id="idealH" type="number" min="0" max="23" value="20" />
+      </div>
+      <div>
+        <label>Ideal Min</label>
+        <input id="idealM" type="number" min="0" max="59" value="0" />
+      </div>
+    </div>
+    <div class="checkboxline">
+      <input id="noTakeaway" type="checkbox" checked />
+      <label for="noTakeaway">Block takeaway-only slots</label>
+    </div>
+
+    <h2>Contact Info</h2>
+    <div class="row">
+      <div>
+        <label>First Name</label>
+        <input id="fname" type="text" />
+      </div>
+      <div>
+        <label>Last Name</label>
+        <input id="lname" type="text" />
+      </div>
+    </div>
+    <label>Email</label>
+    <input id="email" type="email" />
+    <label>Phone</label>
+    <input id="phone" type="text" />
+
+    <div class="warning">
+      ℹ Hunt stops once the slot is secured and Stripe checkout loads — pay
+      manually from there. No card details are collected or stored.
+    </div>
+
+    <button id="save">SAVE CONFIG</button>
+    <div id="status"></div>
+
+    <script src="options.js"></script>
+  </body>
+</html>

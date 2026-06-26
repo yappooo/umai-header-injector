@@ -6,9 +6,22 @@
 // rules, not on rules added via updateDynamicRules. Putting them on a
 // dynamic rule makes the whole updateDynamicRules call fail silently, so
 // keep this rule's condition tabId-free.
+importScripts("hunt.js");
+
 const RULE_ID = 1;
 const HARVEST_URL = "https://reservation.umai.io/en/widget/rembayung";
 const CF_TIMEOUT_MS = 45000;
+
+function isCloudflareTitle(title) {
+  const t = (title || "").toLowerCase();
+  return (
+    t.includes("just a moment") ||
+    t.includes("checking your browser") ||
+    t.includes("waiting room") ||
+    t.includes("attention required") ||
+    t.includes("cloudflare")
+  );
+}
 
 async function applyRule(apiKey) {
   await chrome.declarativeNetRequest.updateDynamicRules({
@@ -123,17 +136,6 @@ async function autoClickReserve(tabId) {
   }
 }
 
-chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
-  const { harvest } = await chrome.storage.local.get("harvest");
-  if (!harvest || harvest.tabId !== tabId || !changeInfo.title) return;
-  const t = changeInfo.title.toLowerCase();
-  const cf = t.includes("just a moment") || t.includes("checking your browser");
-  if (!cf && harvest.status === "waiting-cf") {
-    await setHarvest({ status: "capturing" });
-    autoClickReserve(tabId);
-  }
-});
-
 chrome.webRequest.onSendHeaders.addListener(
   async (details) => {
     const { harvest } = await chrome.storage.local.get("harvest");
@@ -150,14 +152,42 @@ chrome.webRequest.onSendHeaders.addListener(
   ["requestHeaders"]
 );
 
+// ── Shared tab lifecycle listeners ───────────────────────────────────────
+// One listener each for onUpdated/onRemoved, branching on which flow (if
+// any) owns the tab — harvest and hunt never run on the same tab at once.
+
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
+  if (!changeInfo.title) return;
+  const cf = isCloudflareTitle(changeInfo.title);
+
+  const { harvest } = await chrome.storage.local.get("harvest");
+  if (harvest && harvest.tabId === tabId) {
+    if (!cf && harvest.status === "waiting-cf") {
+      await setHarvest({ status: "capturing" });
+      autoClickReserve(tabId);
+    }
+    return;
+  }
+
+  if (typeof onHuntTabTitleUpdated === "function") {
+    await onHuntTabTitleUpdated(tabId, cf);
+  }
+});
+
 chrome.tabs.onRemoved.addListener(async (tabId) => {
   const { harvest } = await chrome.storage.local.get("harvest");
   if (harvest && harvest.tabId === tabId && harvest.status !== "done") {
     await setHarvest({ status: "timeout" });
     await restoreRule();
+    return;
+  }
+  if (typeof onHuntTabRemoved === "function") {
+    await onHuntTabRemoved(tabId);
   }
 });
 
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg === "startHarvest") startHarvest();
+  if (msg === "startHunt" && typeof startHunt === "function") startHunt();
+  if (msg === "stopHunt" && typeof stopHunt === "function") stopHunt();
 });

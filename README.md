@@ -22,6 +22,13 @@ required.
   Cloudflare to clear, clicks through to the booking flow, then grabs the
   latest live `venue-api-key` and loads it into the field. Same key works
   across slugs.
+- **Hunt**: configure a target date/pax/time window and contact info on the
+  options page (`Configure hunt...` link in the popup), then START HUNT.
+  Opens the widget, waits out Cloudflare/queue, polls for a matching slot,
+  clicks it, fills the contact form, and goes through checkout. Stops once
+  Stripe checkout loads — pay manually from there, no card details are
+  collected or stored. A notification + toolbar badge fires on success,
+  failure, or timeout.
 
 ## Why declarativeNetRequest instead of webRequest
 
@@ -61,5 +68,7 @@ that list if you only need one venue's domain pattern.
 | File | Purpose |
 |---|---|
 | `manifest.json` | MV3 manifest, permissions, host scope |
-| `background.js` | builds/updates the single DNR rule from stored key |
-| `popup.html` / `popup.js` | UI to set/clear the key |
+| `background.js` | builds/updates the single DNR rule from stored key, harvest flow, shared tab listeners |
+| `hunt.js` | auto-book state machine + injected DOM step functions, loaded by `background.js` |
+| `popup.html` / `popup.js` | UI to set/clear the key, harvest, start/stop hunt |
+| `options.html` / `options.js` | hunt configuration form |

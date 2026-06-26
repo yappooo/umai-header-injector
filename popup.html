@@ -37,6 +37,17 @@
       button.secondary {
         background: #004d40;
       }
+      button.danger {
+        background: #b71c1c;
+      }
+      a.optlink {
+        display: block;
+        margin-top: 10px;
+        font-size: 11px;
+        color: #00bcd4;
+        text-align: center;
+        cursor: pointer;
+      }
       button:disabled {
         background: #333;
         color: #777;
@@ -52,6 +63,19 @@
         border-color: #1a1a1a;
         margin: 12px 0;
       }
+      #huntLog {
+        margin-top: 6px;
+        height: 110px;
+        overflow-y: auto;
+        background: #000;
+        border: 1px solid #1a1a1a;
+        font-size: 10px;
+        padding: 4px;
+        white-space: pre-wrap;
+      }
+      #huntLog div {
+        margin-bottom: 2px;
+      }
     </style>
   </head>
   <body>
@@ -63,6 +87,12 @@
     <button id="harvest" class="secondary">HARVEST LATEST KEY (rembayung)</button>
     <div id="harvestStatus"></div>
     <button id="useHarvested" style="display:none">USE THIS KEY</button>
+    <hr />
+    <a id="openOptions" class="optlink">Configure hunt...</a>
+    <button id="startHunt">START HUNT</button>
+    <button id="stopHunt" class="danger" style="display:none">STOP HUNT</button>
+    <div id="huntStatus"></div>
+    <div id="huntLog"></div>
     <script src="popup.js"></script>
   </body>
 </html>
