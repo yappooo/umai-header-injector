@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "UMAI Venue API Header Injector",
-  "version": "1.4.0",
-  "description": "Injects a venue-api-key header into UMAI reservation widget requests to bypass venue-gated API checks, without touching Stripe traffic.",
+  "version": "1.4.1",
+  "description": "Auto-fills and grabs keys for the UMAI reservation widget, stops before payment.",
   "permissions": ["declarativeNetRequest", "storage", "webRequest", "tabs", "scripting", "notifications"],
   "host_permissions": [
     "https://*.umai.io/*",

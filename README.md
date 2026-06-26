@@ -1,74 +1,66 @@
 # UMAI Venue API Header Injector
 
-Chrome MV3 extension that injects a `venue-api-key` header into UMAI
-reservation widget requests, no separate browser-automation process
-required.
+A Chrome extension for the UMAI restaurant booking widget. Three buttons,
+that's it:
+
+1. **Save a key** — paste a venue key, click save, done.
+2. **Harvest** — don't have a key? Click this, it grabs one automatically.
+3. **Hunt** — auto-fills the booking flow for you and stops right before
+   payment so you pay manually.
 
 ![popup](screenshots/popup.png)
 
-## What it does
+## Install (2 minutes)
 
-- Popup lets you paste a `venue-api-key`.
-- Background service worker keeps one `declarativeNetRequest` dynamic rule
-  alive that, on every request to `umai.io` / `letsumai.com`:
-  - sets header `venue-api-key: <your key>`
-  - sets `Origin: https://reservation.umai.io`
-  - sets `Referer: https://reservation.umai.io/`
-- Requests to `stripe.com` are excluded (`excludedRequestDomains`), so
-  payment calls are never touched.
-- Key is persisted in `chrome.storage.local`; clearing the field disables
-  injection (rule removed).
-- **Harvest button**: opens the rembayung widget in a new tab, waits for
-  Cloudflare to clear, clicks through to the booking flow, then grabs the
-  latest live `venue-api-key` and loads it into the field. Same key works
-  across slugs.
-- **Hunt**: configure a target date/pax/time window and contact info on the
-  options page (`Configure hunt...` link in the popup), then START HUNT.
-  Opens the widget, waits out Cloudflare/queue, polls for a matching slot,
-  clicks it, fills the contact form, and goes through checkout. Stops once
-  Stripe checkout loads — pay manually from there, no card details are
-  collected or stored. A notification + toolbar badge fires on success,
-  failure, or timeout.
-
-## Why declarativeNetRequest instead of webRequest
-
-MV3 dropped blocking `webRequest`. `declarativeNetRequest`'s
-`modifyHeaders` action is the supported replacement and runs in the
-network layer before the request leaves Chrome — no content script or
-page-context hook needed, and it survives Cloudflare's JS challenge since
-it's not page-script-visible.
-
-## Install (unpacked)
-
-1. `chrome://extensions` → enable **Developer mode**.
-2. **Load unpacked** → select this `umai-header-injector` folder.
-3. Click the extension icon, paste your `venue-api-key`, **SAVE & ACTIVATE**.
-4. Visit `https://reservation.umai.io/en/widget/<slug>` — requests now carry
-   the header automatically.
+1. Open Chrome, go to `chrome://extensions`.
+2. Turn on **Developer mode** (top-right toggle).
+3. Click **Load unpacked**.
+4. Pick this folder (`umai-header-injector`).
+5. Done — the icon shows up in your toolbar.
 
 ## How to use
 
-1. Get the venue's `venue-api-key` (from your account/venue dashboard, or by
-   inspecting network requests on the widget page).
-2. Click the extension icon in the Chrome toolbar to open the popup shown
-   above.
-3. Paste the key into the `venue-api-key` field.
-4. Click **SAVE & ACTIVATE** — status line confirms injection is ON.
-5. Reload or open the widget page; every `umai.io` / `letsumai.com` request
-   now carries the header. Clear the field + save to turn injection back off.
+### Get a key automatically (easiest)
 
-## Scope
+1. Click the extension icon.
+2. Click **HARVEST LATEST KEY**.
+3. A new tab opens by itself, waits for the page to load, grabs the key.
+4. Click **USE THIS KEY** when it shows up.
 
-Targets `reservation.umai.io/en/widget/*` flows. Matches any host under
-`umai.io` / `letsumai.com` per `host_permissions` in `manifest.json` — narrow
-that list if you only need one venue's domain pattern.
+### Or paste a key yourself
 
-## Files
+1. Click the extension icon.
+2. Paste your venue key into the box.
+3. Click **SAVE & ACTIVATE**.
 
-| File | Purpose |
+### Auto-book a table
+
+1. Click **Configure hunt...** in the popup.
+2. Fill in: date you want, party size, earliest/latest time you'll accept,
+   your name/email/phone.
+3. Go back to the popup, click **START HUNT**.
+4. It opens the booking page, waits for any Cloudflare check to clear,
+   keeps checking for a free slot in your time window, clicks it the
+   second one shows up, fills your contact info, and takes you to the
+   payment page.
+5. **You pay the card yourself** — this never touches or stores card
+   details.
+6. Watch the small log box in the popup to see what it's doing at each
+   step. Click **STOP HUNT** any time to cancel.
+
+## Why does it need these Chrome permissions?
+
+- Reads/changes requests only on `umai.io` and `letsumai.com` — nothing
+  else on the internet.
+- Needs to open/control one tab to run Harvest/Hunt.
+- Needs notification permission to ping you when a table is booked.
+
+## Files (only if you're editing this)
+
+| File | What it does |
 |---|---|
-| `manifest.json` | MV3 manifest, permissions, host scope |
-| `background.js` | builds/updates the single DNR rule from stored key, harvest flow, shared tab listeners |
-| `hunt.js` | auto-book state machine + injected DOM step functions, loaded by `background.js` |
-| `popup.html` / `popup.js` | UI to set/clear the key, harvest, start/stop hunt |
-| `options.html` / `options.js` | hunt configuration form |
+| `manifest.json` | Chrome extension config |
+| `background.js` | Keeps your key applied, runs Harvest |
+| `hunt.js` | Runs the auto-booking flow |
+| `popup.html` / `popup.js` | The popup window |
+| `options.html` / `options.js` | The Hunt settings page |
