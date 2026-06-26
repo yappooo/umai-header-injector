@@ -1,11 +1,16 @@
 // Maintains one declarativeNetRequest rule that stamps venue-api-key
 // (plus Origin/Referer) onto UMAI API calls. Stripe traffic is excluded
 // via excludedRequestDomains so payment requests stay untouched.
+//
+// NOTE: tabIds/excludedTabIds conditions are only valid on session-scoped
+// rules, not on rules added via updateDynamicRules. Putting them on a
+// dynamic rule makes the whole updateDynamicRules call fail silently, so
+// keep this rule's condition tabId-free.
 const RULE_ID = 1;
 const HARVEST_URL = "https://reservation.umai.io/en/widget/rembayung";
 const CF_TIMEOUT_MS = 45000;
 
-async function applyRule(apiKey, excludedTabIds = []) {
+async function applyRule(apiKey) {
   await chrome.declarativeNetRequest.updateDynamicRules({
     removeRuleIds: [RULE_ID],
     addRules: apiKey
@@ -24,7 +29,6 @@ async function applyRule(apiKey, excludedTabIds = []) {
             condition: {
               requestDomains: ["umai.io", "letsumai.com"],
               excludedRequestDomains: ["stripe.com"],
-              excludedTabIds,
               resourceTypes: [
                 "xmlhttprequest",
                 "sub_frame",
@@ -49,19 +53,17 @@ chrome.runtime.onInstalled.addListener(async () => {
 
 chrome.storage.onChanged.addListener(async (changes, area) => {
   if (area === "local" && "apiKey" in changes) {
-    const { harvest } = await chrome.storage.local.get("harvest");
-    const excluded = harvest && harvest.tabId && harvest.status !== "done" && harvest.status !== "timeout"
-      ? [harvest.tabId]
-      : [];
-    applyRule(changes.apiKey.newValue || "", excluded);
+    applyRule(changes.apiKey.newValue || "");
   }
 });
 
 // ── Harvest flow ──────────────────────────────────────────────────────────
-// Opens the rembayung widget in its own tab, excluded from our own header
-// injection rule, waits out Cloudflare ("just a moment" title), then
-// sniffs the venue-api-key the widget's own JS attaches to its real
-// request — that's the freshest live key, not whatever we last saved.
+// Opens the rembayung widget in its own tab, waits out Cloudflare ("just a
+// moment" title), clicks through to the booking flow, then sniffs the
+// venue-api-key the widget's own JS attaches to its real request — the
+// freshest live key, not whatever we last saved. Our own injection rule is
+// pulled entirely for the few seconds this takes (it can't be scoped to a
+// single tab on a dynamic rule), then restored once we have the key.
 
 async function setHarvest(patch) {
   const { harvest = {} } = await chrome.storage.local.get("harvest");
@@ -70,19 +72,22 @@ async function setHarvest(patch) {
   return next;
 }
 
+async function restoreRule() {
+  await applyRule(await currentApiKey());
+}
+
 async function startHarvest() {
-  const apiKey = await currentApiKey();
   await setHarvest({ status: "opening", key: "", tabId: null, startedAt: Date.now() });
+  await applyRule(""); // pull injection so the real key isn't masked
 
   const tab = await chrome.tabs.create({ url: HARVEST_URL, active: true });
-  await applyRule(apiKey, [tab.id]); // don't let our own rule mask the real key
   await setHarvest({ status: "waiting-cf", tabId: tab.id });
 
   setTimeout(async () => {
     const { harvest } = await chrome.storage.local.get("harvest");
     if (harvest && harvest.tabId === tab.id && harvest.status !== "done") {
       await setHarvest({ status: "timeout" });
-      await applyRule(await currentApiKey(), []); // restore normal injection
+      await restoreRule();
     }
   }, CF_TIMEOUT_MS);
 }
@@ -138,7 +143,7 @@ chrome.webRequest.onSendHeaders.addListener(
     );
     if (h && h.value) {
       await setHarvest({ status: "done", key: h.value });
-      await applyRule(await currentApiKey(), []); // restore normal injection for that tab
+      await restoreRule();
     }
   },
   { urls: ["*://*.umai.io/*", "*://*.letsumai.com/*"] },
@@ -149,7 +154,7 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
   const { harvest } = await chrome.storage.local.get("harvest");
   if (harvest && harvest.tabId === tabId && harvest.status !== "done") {
     await setHarvest({ status: "timeout" });
-    await applyRule(await currentApiKey(), []);
+    await restoreRule();
   }
 });
 
