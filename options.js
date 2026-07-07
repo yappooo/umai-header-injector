@@ -8,6 +8,7 @@ const FIELDS = {
   idealH: "number",
   idealM: "number",
   noTakeaway: "checkbox",
+  disableAutoRefresh: "checkbox",
   fname: "text",
   lname: "text",
   email: "text",
@@ -33,6 +34,7 @@ async function load() {
   getEl("idealH").value = huntConfig.idealH ?? 20;
   getEl("idealM").value = huntConfig.idealM ?? 0;
   getEl("noTakeaway").checked = huntConfig.noTakeaway !== false;
+  getEl("disableAutoRefresh").checked = !!huntConfig.disableAutoRefresh;
   getEl("fname").value = huntConfig.fname || "";
   getEl("lname").value = huntConfig.lname || "";
   getEl("email").value = huntConfig.email || "";
@@ -50,6 +52,7 @@ async function save() {
     idealH: Number(getEl("idealH").value),
     idealM: Number(getEl("idealM").value),
     noTakeaway: getEl("noTakeaway").checked,
+    disableAutoRefresh: getEl("disableAutoRefresh").checked,
     fname: getEl("fname").value.trim(),
     lname: getEl("lname").value.trim(),
     email: getEl("email").value.trim(),

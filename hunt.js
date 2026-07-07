@@ -420,8 +420,10 @@ async function runHuntLoop(tabId, myToken, cfg) {
     if ((tab.url || "").includes("/block/")) {
       await setHunt({ status: "blocked-queue" }, `Queue not open yet (url: ${tab.url}). Waiting...`);
       await sleep(randomBetween(3000, 5000));
-      await chrome.tabs.update(tabId, { url: buildWidgetUrl(cfg, currentPax) });
-      await sleep(800);
+      if (!cfg.disableAutoRefresh) {
+        await chrome.tabs.update(tabId, { url: buildWidgetUrl(cfg, currentPax) });
+        await sleep(800);
+      }
       continue;
     }
 
@@ -433,10 +435,15 @@ async function runHuntLoop(tabId, myToken, cfg) {
 
     const closed = await exec(tabId, checkClosedDayInPage);
     if (closed && closed.closed) {
-      await setHunt({ status: "polling-slots", detail: closed.text }, `Day closed: ${closed.text}. Reloading...`);
-      await sleep(randomBetween(500, 1000));
-      await chrome.tabs.reload(tabId);
-      await sleep(800);
+      if (cfg.disableAutoRefresh) {
+        await setHunt({ status: "polling-slots", detail: closed.text }, `Day closed: ${closed.text}. Waiting for manual refresh...`);
+        await sleep(randomBetween(2000, 3000));
+      } else {
+        await setHunt({ status: "polling-slots", detail: closed.text }, `Day closed: ${closed.text}. Reloading...`);
+        await sleep(randomBetween(500, 1000));
+        await chrome.tabs.reload(tabId);
+        await sleep(800);
+      }
       continue;
     }
 
@@ -455,16 +462,21 @@ async function runHuntLoop(tabId, myToken, cfg) {
 
     if (!slotResult || slotResult.slotsFound === 0) {
       const debug = await exec(tabId, debugFindTimeButtonsInPage);
+      const reloadSuffix = cfg.disableAutoRefresh ? "Waiting for manual refresh..." : "Reloading...";
       const msg =
         debug && debug.count > 0
           ? `No match on button.um-timeslot__button/.um-timeslot, but found ${debug.count} time-like buttons with class(es): ${[
               ...new Set(debug.candidates.map((c) => c.className || "(none)")),
             ].join(" | ")}`
-          : "No slot buttons on page yet (and no time-like buttons found at all). Reloading...";
+          : `No slot buttons on page yet. ${reloadSuffix}`;
       await setHunt({}, msg);
-      await sleep(randomBetween(pollMs * 2.5, pollMs * 4.5));
-      await chrome.tabs.reload(tabId);
-      await sleep(800);
+      if (cfg.disableAutoRefresh) {
+        await sleep(randomBetween(pollMs * 2, pollMs * 3));
+      } else {
+        await sleep(randomBetween(pollMs * 2.5, pollMs * 4.5));
+        await chrome.tabs.reload(tabId);
+        await sleep(800);
+      }
       continue;
     }
 
@@ -476,20 +488,30 @@ async function runHuntLoop(tabId, myToken, cfg) {
       );
       if (noSlotCount >= 3) {
         noSlotCount = 0;
-        if (paxFallback.length > 0) {
-          currentPax = paxFallback.shift();
+        if (!cfg.disableAutoRefresh) {
+          if (paxFallback.length > 0) {
+            currentPax = paxFallback.shift();
+          } else {
+            currentPax = Number(cfg.pax);
+            paxFallback = PAX_FALLBACK_LIST.filter((p) => p !== currentPax);
+          }
+          await setHunt({ currentPax }, `Pax fallback: switching to pax ${currentPax}.`);
+          await chrome.tabs.update(tabId, { url: buildWidgetUrl(cfg, currentPax) });
+          await sleep(800);
         } else {
-          currentPax = Number(cfg.pax);
-          paxFallback = PAX_FALLBACK_LIST.filter((p) => p !== currentPax);
+          await setHunt({}, `No match 3x — skipping pax fallback (manual refresh mode). Waiting...`);
+          await sleep(randomBetween(pollMs * 2, pollMs * 3));
         }
-        await setHunt({ currentPax }, `Pax fallback: switching to pax ${currentPax}.`);
-        await chrome.tabs.update(tabId, { url: buildWidgetUrl(cfg, currentPax) });
-        await sleep(800);
         continue;
       }
-      await sleep(randomBetween(pollMs * 1.5, pollMs * 2.5));
-      await chrome.tabs.reload(tabId);
-      await sleep(800);
+      if (cfg.disableAutoRefresh) {
+        await setHunt({}, `No slot in window [${cfg.startH}-${cfg.endH}h]. Waiting for manual refresh...`);
+        await sleep(randomBetween(pollMs * 1.5, pollMs * 2.5));
+      } else {
+        await sleep(randomBetween(pollMs * 1.5, pollMs * 2.5));
+        await chrome.tabs.reload(tabId);
+        await sleep(800);
+      }
       continue;
     }
 
@@ -518,10 +540,15 @@ async function runHuntLoop(tabId, myToken, cfg) {
     }
 
     if (lost) {
-      await setHunt({ status: "slot-lost-retry" }, "Reloading to re-hunt after lost slot...");
-      await sleep(randomBetween(500, 1000));
-      await chrome.tabs.reload(tabId);
-      await sleep(800);
+      if (cfg.disableAutoRefresh) {
+        await setHunt({ status: "slot-lost-retry" }, "Slot lost — waiting for manual refresh to re-hunt...");
+        await sleep(randomBetween(1500, 2500));
+      } else {
+        await setHunt({ status: "slot-lost-retry" }, "Reloading to re-hunt after lost slot...");
+        await sleep(randomBetween(500, 1000));
+        await chrome.tabs.reload(tabId);
+        await sleep(800);
+      }
       continue;
     }
     if (!secured) {
@@ -543,9 +570,14 @@ async function runHuntLoop(tabId, myToken, cfg) {
     await setHunt({ status: "submitting-checkout" }, "Submitting checkout...");
     const checkout = await exec(tabId, submitCheckoutInPage);
     if (checkout && checkout.lost) {
-      await setHunt({ status: "slot-lost-retry" }, `Lost slot at checkout: ${checkout.errorText || ""}. Re-hunting...`);
-      await chrome.tabs.reload(tabId);
-      await sleep(800);
+      if (cfg.disableAutoRefresh) {
+        await setHunt({ status: "slot-lost-retry" }, `Lost slot at checkout: ${checkout.errorText || ""}. Waiting for manual refresh...`);
+        await sleep(randomBetween(1500, 2500));
+      } else {
+        await setHunt({ status: "slot-lost-retry" }, `Lost slot at checkout: ${checkout.errorText || ""}. Re-hunting...`);
+        await chrome.tabs.reload(tabId);
+        await sleep(800);
+      }
       continue;
     }
     if (!checkout || !checkout.stripeIframePresent) {
