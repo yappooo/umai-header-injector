@@ -54,8 +54,23 @@ function randomBetween(min, max) {
 
 async function exec(tabId, func, args = [], frameIds) {
   const target = frameIds ? { tabId, frameIds } : { tabId };
-  const results = await chrome.scripting.executeScript({ target, func, args });
-  return results && results[0] ? results[0].result : undefined;
+  try {
+    const results = await chrome.scripting.executeScript({ target, func, args });
+    return results && results[0] ? results[0].result : undefined;
+  } catch (e) {
+    // Frame removed / tab navigating — treat as "not ready yet", caller handles undefined
+    const msg = (e && e.message) || String(e);
+    if (
+      msg.includes("Frame with ID") ||
+      msg.includes("Cannot access") ||
+      msg.includes("No tab with id") ||
+      msg.includes("The tab was closed")
+    ) {
+      console.log("[HUNT] exec swallowed transient error:", msg);
+      return undefined;
+    }
+    throw e;
+  }
 }
 
 async function notifyHuntResult(kind, detail) {
@@ -396,6 +411,9 @@ async function runHuntLoop(tabId, myToken, cfg) {
     }
     return;
   }
+
+  // Small grace period — page finishes its final navigation after CF clears
+  await sleep(1200);
 
   let currentPax = Number(cfg.pax);
   let paxFallback = PAX_FALLBACK_LIST.filter((p) => p !== currentPax);
