@@ -231,11 +231,41 @@ async function requestOTP() {
     console.log("[OTP] Native result:", JSON.stringify(nativeResult));
     if (nativeResult) {
       if (nativeResult.ok && nativeResult.code) {
+        const code = nativeResult.code;
         await chrome.storage.local.set({
           otpTriggerTs: Date.now(),
-          otpCode: { code: nativeResult.code, ts: Date.now() },
+          otpCode: { code, ts: Date.now() },
         });
-        return { ok: true, msg: `OTP code: ${nativeResult.code}` };
+        // Auto-fill into open UMAI tab
+        const fillTabs = await chrome.tabs.query({
+          url: ["https://*.umai.io/*", "https://*.letsumai.com/*"],
+        });
+        if (fillTabs.length > 0) {
+          try {
+            await chrome.scripting.executeScript({
+              target: { tabId: fillTabs[0].id },
+              func: function (otpCode) {
+                const field = document.querySelector(
+                  "#um-field--email-otp, #um-field--otp, input[id*='otp' i], input[name*='otp' i], input[placeholder*='otp' i], input[placeholder*='verification' i], input[placeholder*='passcode' i], input[placeholder*='code' i]"
+                );
+                if (!field) return false;
+                field.value = otpCode;
+                field.dispatchEvent(new Event("input", { bubbles: true }));
+                field.dispatchEvent(new Event("change", { bubbles: true }));
+                const btn = document.querySelector(
+                  "footer.ums-footer button[type='submit'], button[type='submit']"
+                );
+                if (btn) btn.click();
+                return true;
+              },
+              args: [code],
+              world: "MAIN",
+            });
+          } catch (e) {
+            console.log("[OTP] Auto-fill failed:", e && e.message ? e.message : e);
+          }
+        }
+        return { ok: true, msg: `OTP ${code} filled into widget.` };
       }
       return { ok: false, msg: nativeResult.error || `Failed: ${(nativeResult.body || "").slice(0, 120)}` };
     }
