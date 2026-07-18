@@ -14,6 +14,7 @@ const FIELDS = {
   email: "text",
   phone: "text",
   imapHost: "text",
+  imapUser: "text",
   imapPassword: "text",
 };
 
@@ -42,6 +43,7 @@ async function load() {
   getEl("email").value = huntConfig.email || "";
   getEl("phone").value = huntConfig.phone || "";
   getEl("imapHost").value = huntConfig.imapHost || "imap.gmail.com";
+  getEl("imapUser").value = huntConfig.imapUser || "";
   getEl("imapPassword").value = huntConfig.imapPassword || "";
 }
 
@@ -62,6 +64,7 @@ async function save() {
     email: getEl("email").value.trim(),
     phone: getEl("phone").value.trim(),
     imapHost: getEl("imapHost").value.trim() || "imap.gmail.com",
+    imapUser: getEl("imapUser").value.trim(),
     imapPassword: getEl("imapPassword").value,
   };
   await chrome.storage.local.set({ huntConfig });

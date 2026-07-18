@@ -380,7 +380,7 @@ function readOTPViaNative(cfg, afterTs) {
         "com.umai.otp_helper",
         {
           host: cfg.imapHost || "imap.gmail.com",
-          email: cfg.email || "",
+          email: cfg.imapUser || cfg.email || "",
           password: cfg.imapPassword || "",
           after_ts: afterTs || Date.now() - 60000,
           timeout: 120,
