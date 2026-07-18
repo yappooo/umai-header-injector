@@ -305,7 +305,8 @@ function submitCheckoutInPage() {
         "iframe[title*='Secure payment input frame' i], iframe[title*='stripe' i], iframe[src*='stripe.com'], iframe[src*='js.stripe.com']"
       );
       const otpField = document.querySelector(
-        "#um-field--email-otp, #um-field--otp, input[id*='otp' i], input[name*='otp' i], input[placeholder*='otp' i], input[placeholder*='verification' i], input[placeholder*='passcode' i]"
+        ".um-otp-input__box, #um-field--email-otp, #um-field--otp, " +
+        "input[id*='otp' i], input[name*='otp' i], input[placeholder*='verification' i]"
       );
       if (err) {
         clearInterval(iv);
@@ -332,12 +333,37 @@ function submitCheckoutInPage() {
 }
 
 function fillOTPInPage(code) {
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+
+  // Split-box OTP modal
+  const boxes = document.querySelectorAll(".um-otp-input__box");
+  if (boxes.length >= 2) {
+    const digits = code.split("");
+    // Try full-code into first box (React may auto-split)
+    boxes[0].focus();
+    setter.call(boxes[0], code);
+    boxes[0].dispatchEvent(new InputEvent("input", { bubbles: true, data: code }));
+    boxes[0].dispatchEvent(new Event("change", { bubbles: true }));
+    const allFilled = Array.from(boxes).every((b, i) => b.value === (digits[i] || ""));
+    if (!allFilled) {
+      boxes.forEach((box, i) => {
+        box.focus();
+        setter.call(box, digits[i] || "");
+        box.dispatchEvent(new InputEvent("input", { bubbles: true, data: digits[i] || "" }));
+        box.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    }
+    return { filled: true };
+  }
+
+  // Fallback: single field
   const field = document.querySelector(
-    "#um-field--email-otp, #um-field--otp, input[id*='otp' i], input[name*='otp' i], input[placeholder*='otp' i], input[placeholder*='verification' i], input[placeholder*='passcode' i]"
+    "#um-field--email-otp, #um-field--otp, input[id*='otp' i], " +
+    "input[name*='otp' i], input[placeholder*='verification' i]"
   );
   if (!field) return { filled: false };
-  field.value = code;
-  field.dispatchEvent(new Event("input", { bubbles: true }));
+  setter.call(field, code);
+  field.dispatchEvent(new InputEvent("input", { bubbles: true, data: code }));
   field.dispatchEvent(new Event("change", { bubbles: true }));
   return { filled: true };
 }

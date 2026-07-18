@@ -190,28 +190,84 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
   }
 });
 
-const OTP_FILL_SELECTOR =
-  "#um-field--email-otp, #um-field--otp, input[id*='otp' i], input[name*='otp' i], " +
-  "input[placeholder*='otp' i], input[placeholder*='verification' i], " +
-  "input[placeholder*='passcode' i], input[placeholder*='code' i]";
-
 async function tryFillOTPInTab(tabId, code) {
   try {
     const results = await chrome.scripting.executeScript({
       target: { tabId },
-      func: function (otpCode, sel) {
-        const field = document.querySelector(sel);
+      func: function (otpCode) {
+        // Split-box OTP modal (.um-otp-input__box — one digit per box)
+        const boxes = document.querySelectorAll(".um-otp-input__box");
+        if (boxes.length >= 2) {
+          const digits = otpCode.split("");
+          const setter = Object.getOwnPropertyDescriptor(
+            window.HTMLInputElement.prototype,
+            "value"
+          ).set;
+
+          // Try filling first box with full code (React may auto-split on paste)
+          boxes[0].focus();
+          setter.call(boxes[0], otpCode);
+          boxes[0].dispatchEvent(new InputEvent("input", { bubbles: true, data: otpCode }));
+          boxes[0].dispatchEvent(new Event("change", { bubbles: true }));
+
+          // Check if React split it; if not, fill each box individually
+          const allFilled = Array.from(boxes).every(
+            (b, i) => b.value === (digits[i] || "")
+          );
+          if (!allFilled) {
+            boxes.forEach((box, i) => {
+              box.focus();
+              setter.call(box, digits[i] || "");
+              box.dispatchEvent(
+                new InputEvent("input", { bubbles: true, data: digits[i] || "" })
+              );
+              box.dispatchEvent(new Event("change", { bubbles: true }));
+            });
+          }
+
+          // Click confirm — poll until enabled (React enables it after state update)
+          const btn = document.querySelector(
+            "button.um-email-otp__confirm, button.um-dialog__button--confirm"
+          );
+          if (btn) {
+            if (!btn.disabled) {
+              btn.click();
+            } else {
+              let tries = 0;
+              const iv = setInterval(() => {
+                tries++;
+                if (!btn.disabled) {
+                  btn.click();
+                  clearInterval(iv);
+                } else if (tries > 40) {
+                  clearInterval(iv);
+                }
+              }, 200);
+            }
+          }
+          return true;
+        }
+
+        // Fallback: single-field OTP
+        const field = document.querySelector(
+          "#um-field--email-otp, #um-field--otp, input[id*='otp' i], " +
+          "input[name*='otp' i], input[placeholder*='verification' i]"
+        );
         if (!field) return false;
-        field.value = otpCode;
-        field.dispatchEvent(new Event("input", { bubbles: true }));
+        const setter2 = Object.getOwnPropertyDescriptor(
+          window.HTMLInputElement.prototype,
+          "value"
+        ).set;
+        setter2.call(field, otpCode);
+        field.dispatchEvent(new InputEvent("input", { bubbles: true, data: otpCode }));
         field.dispatchEvent(new Event("change", { bubbles: true }));
-        const btn = document.querySelector(
+        const btn2 = document.querySelector(
           "footer.ums-footer button[type='submit'], button[type='submit']"
         );
-        if (btn) btn.click();
+        if (btn2) btn2.click();
         return true;
       },
-      args: [code, OTP_FILL_SELECTOR],
+      args: [code],
       world: "MAIN",
     });
     return results && results[0] && results[0].result === true;
@@ -221,7 +277,7 @@ async function tryFillOTPInTab(tabId, code) {
 }
 
 function watchAndFillOTP(code) {
-  const deadline = Date.now() + 30000;
+  const deadline = Date.now() + 60000; // 60s window — modal may take time to appear
   let done = false;
 
   async function tick() {
@@ -237,7 +293,7 @@ function watchAndFillOTP(code) {
         return;
       }
     }
-    setTimeout(tick, 1000);
+    setTimeout(tick, 800);
   }
 
   tick();
