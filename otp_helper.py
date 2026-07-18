@@ -231,11 +231,35 @@ if __name__ == "__main__":
         send_msg(result)
         sys.exit(0)
 
-    # default: read_otp
+    if action == "send_and_read_otp":
+        # Send OTP first, then poll IMAP for the code
+        send_result = send_otp_request(
+            msg.get("api_url", ""),
+            msg.get("venue_api_key", ""),
+            msg.get("email", ""),
+        )
+        if not send_result.get("ok"):
+            send_msg({"ok": False, "code": "", "error": f"Send failed: {send_result.get('body', '')[:100]}"})
+            sys.exit(0)
+        after_ts = time.time() * 1000
+        code = find_otp(
+            msg.get("imap_host", "imap.gmail.com"),
+            msg.get("imap_user", "") or msg.get("email", ""),
+            msg.get("imap_password", ""),
+            after_ts,
+            msg.get("timeout", 120),
+        )
+        if code:
+            send_msg({"ok": True, "code": code})
+        else:
+            send_msg({"ok": False, "code": "", "error": "OTP sent but not found in email within 120s"})
+        sys.exit(0)
+
+    # default: read_otp only
     code = find_otp(
-        msg.get("host", "imap.gmail.com"),
-        msg.get("email", ""),
-        msg.get("password", ""),
+        msg.get("imap_host", msg.get("host", "imap.gmail.com")),
+        msg.get("imap_user", "") or msg.get("email", ""),
+        msg.get("imap_password", msg.get("password", "")),
         msg.get("after_ts", 0),
         msg.get("timeout", 120),
     )

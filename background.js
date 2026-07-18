@@ -201,17 +201,22 @@ async function requestOTP() {
   });
   console.log("[OTP] UMAI tabs found:", umiTabs.length, umiTabs.map(t => t.url));
 
-  // Use native host (Python) to POST email_otps — bypasses CF browser block
-  console.log("[OTP] Sending via native host (Python urllib)...");
+  // Use native host: send OTP + read code from IMAP in one call
+  console.log("[OTP] Sending + reading via native host...");
+  const { huntConfig: cfg } = await chrome.storage.local.get("huntConfig");
   try {
     const nativeResult = await new Promise((resolve) => {
       chrome.runtime.sendNativeMessage(
         "com.umai.otp_helper",
         {
-          action: "send_otp",
+          action: "send_and_read_otp",
           api_url: "https://letsumai.com/widget/api/v2/email_otps",
           venue_api_key: apiKey || "",
           email,
+          imap_host: (cfg && cfg.imapHost) || "imap.gmail.com",
+          imap_user: (cfg && cfg.imapUser) || email,
+          imap_password: (cfg && cfg.imapPassword) || "",
+          timeout: 120,
         },
         (response) => {
           if (chrome.runtime.lastError) {
@@ -225,15 +230,14 @@ async function requestOTP() {
     });
     console.log("[OTP] Native result:", JSON.stringify(nativeResult));
     if (nativeResult) {
-      const ok = nativeResult.ok || [200, 201, 204].includes(nativeResult.status);
-      if (ok) await chrome.storage.local.set({ otpTriggerTs: Date.now() });
-      return {
-        ok,
-        status: nativeResult.status,
-        msg: ok
-          ? `OTP sent to ${email}`
-          : `Failed ${nativeResult.status}: ${(nativeResult.body || "").slice(0, 120)}`,
-      };
+      if (nativeResult.ok && nativeResult.code) {
+        await chrome.storage.local.set({
+          otpTriggerTs: Date.now(),
+          otpCode: { code: nativeResult.code, ts: Date.now() },
+        });
+        return { ok: true, msg: `OTP code: ${nativeResult.code}` };
+      }
+      return { ok: false, msg: nativeResult.error || `Failed: ${(nativeResult.body || "").slice(0, 120)}` };
     }
   } catch (e) {
     console.log("[OTP] Native threw:", e && e.message ? e.message : String(e));

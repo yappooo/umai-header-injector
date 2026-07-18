@@ -373,15 +373,20 @@ function waitForStripeAfterOTPInPage() {
 // ── Native OTP reader ────────────────────────────────────────────────────
 // Calls otp_helper.py via Chrome native messaging (install_native.bat sets it up).
 // Returns { ok, code } or null on error.
-function readOTPViaNative(cfg, afterTs) {
+async function readOTPViaNative(cfg, afterTs) {
+  const { apiKey } = await chrome.storage.local.get("apiKey");
   return new Promise((resolve) => {
     try {
       chrome.runtime.sendNativeMessage(
         "com.umai.otp_helper",
         {
-          host: cfg.imapHost || "imap.gmail.com",
-          email: cfg.imapUser || cfg.email || "",
-          password: cfg.imapPassword || "",
+          action: "send_and_read_otp",
+          api_url: "https://letsumai.com/widget/api/v2/email_otps",
+          venue_api_key: apiKey || "",
+          email: cfg.email || "",
+          imap_host: cfg.imapHost || "imap.gmail.com",
+          imap_user: cfg.imapUser || cfg.email || "",
+          imap_password: cfg.imapPassword || "",
           after_ts: afterTs || Date.now() - 60000,
           timeout: 120,
         },

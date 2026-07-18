@@ -152,10 +152,40 @@ stopHuntBtn.addEventListener("click", () => {
 // ── OTP ───────────────────────────────────────────────────────────────────
 const getOtpBtn = document.getElementById("getOtp");
 const otpStatus = document.getElementById("otpStatus");
+const otpCodeEl = document.getElementById("otpCode");
+
+function showOtpCode(code) {
+  if (!code) { otpCodeEl.style.display = "none"; return; }
+  otpCodeEl.textContent = code;
+  otpCodeEl.style.display = "block";
+}
+
+// Load stored code on open
+chrome.storage.local.get("otpCode").then(({ otpCode }) => {
+  if (otpCode && otpCode.code && Date.now() - otpCode.ts < 600000) {
+    showOtpCode(otpCode.code);
+  }
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && "otpCode" in changes) {
+    const v = changes.otpCode.newValue;
+    showOtpCode(v && v.code ? v.code : "");
+  }
+});
+
+otpCodeEl.addEventListener("click", () => {
+  navigator.clipboard.writeText(otpCodeEl.textContent).then(() => {
+    const prev = otpCodeEl.textContent;
+    otpCodeEl.textContent = "Copied!";
+    setTimeout(() => { otpCodeEl.textContent = prev; }, 1000);
+  });
+});
 
 getOtpBtn.addEventListener("click", async () => {
   getOtpBtn.disabled = true;
-  otpStatus.textContent = "Sending OTP request...";
+  otpStatus.textContent = "Sending OTP + reading from email (up to 2 min)...";
+  showOtpCode("");
   const res = await chrome.runtime.sendMessage("requestOTP");
   otpStatus.textContent = res ? res.msg : "No response from background.";
   getOtpBtn.disabled = false;
