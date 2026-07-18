@@ -305,12 +305,54 @@ async function requestOTP() {
   };
 }
 
+async function requestOTPBackground() {
+  // Same as requestOTP but just returns { code } for the fetch interceptor
+  const { apiKey, huntConfig } = await chrome.storage.local.get(["apiKey", "huntConfig"]);
+  const email = huntConfig && huntConfig.email;
+  if (!email) return { code: null, error: "No email configured" };
+
+  const cfg = huntConfig;
+  try {
+    const nativeResult = await new Promise((resolve) => {
+      chrome.runtime.sendNativeMessage(
+        "com.umai.otp_helper",
+        {
+          action: "send_and_read_otp",
+          api_url: "https://letsumai.com/widget/api/v2/email_otps",
+          venue_api_key: apiKey || "",
+          email,
+          imap_host: (cfg && cfg.imapHost) || "imap.gmail.com",
+          imap_user: (cfg && cfg.imapUser) || email,
+          imap_password: (cfg && cfg.imapPassword) || "",
+          timeout: 120,
+        },
+        (response) => {
+          if (chrome.runtime.lastError) resolve(null);
+          else resolve(response || null);
+        }
+      );
+    });
+    if (nativeResult && nativeResult.ok && nativeResult.code) {
+      const code = nativeResult.code;
+      await chrome.storage.local.set({ otpCode: { code, ts: Date.now() } });
+      return { code };
+    }
+    return { code: null, error: nativeResult && nativeResult.error };
+  } catch (e) {
+    return { code: null, error: String(e) };
+  }
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg === "startHarvest") startHarvest();
   if (msg === "startHunt" && typeof startHunt === "function") startHunt();
   if (msg === "stopHunt" && typeof stopHunt === "function") stopHunt();
   if (msg === "requestOTP") {
     requestOTP().then(sendResponse);
+    return true;
+  }
+  if (msg === "requestOTPBackground") {
+    requestOTPBackground().then(sendResponse);
     return true;
   }
 });

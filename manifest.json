@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "UMAI Venue API Header Injector",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "Auto-fills and grabs keys for the UMAI reservation widget, stops before payment.",
   "permissions": ["declarativeNetRequest", "storage", "webRequest", "tabs", "scripting", "notifications", "nativeMessaging"],
   "host_permissions": [
@@ -15,6 +15,19 @@
     "default_popup": "popup.html",
     "default_title": "UMAI Header Injector"
   },
+  "content_scripts": [
+    {
+      "matches": ["https://*.umai.io/*", "https://*.letsumai.com/*"],
+      "js": ["otp_interceptor.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://*.umai.io/*", "https://*.letsumai.com/*"],
+      "js": ["otp_bridge.js"],
+      "run_at": "document_start"
+    }
+  ],
   "options_page": "options.html",
   "icons": {
     "16": "icons/icon16.png",
