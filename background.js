@@ -197,81 +197,48 @@ async function requestOTP() {
   });
   console.log("[OTP] UMAI tabs found:", umiTabs.length, umiTabs.map(t => t.url));
 
-  if (umiTabs.length > 0) {
-    console.log("[OTP] Firing from tab", umiTabs[0].id, umiTabs[0].url);
-    try {
-      const results = await chrome.scripting.executeScript({
-        target: { tabId: umiTabs[0].id },
-        world: "MAIN",
-        func: function (emailAddr, venueApiKey) {
-          // Try same-origin proxy path first (avoids CF on api.letsumai.com),
-          // fall back to direct api.letsumai.com if that 404s
-          const urls = [
-            "/widget/api/v2/email_otps",
-            "https://api.letsumai.com/widget/api/v2/email_otps",
-          ];
-          const headers = {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-            "venue-api-key": venueApiKey || "",
-          };
-          const body = JSON.stringify({ email: emailAddr, locale: "en" });
-          function tryNext(i) {
-            if (i >= urls.length) return Promise.resolve({ status: 0, body: "all URLs failed" });
-            return fetch(urls[i], { method: "POST", headers, body })
-              .then((r) => r.text().then((t) => ({ status: r.status, body: t, url: urls[i] })))
-              .catch((e) => {
-                console.log("[OTP-page] URL", urls[i], "failed:", e.message);
-                return tryNext(i + 1);
-              });
-          }
-          return tryNext(0);
+  // Use native host (Python) to POST email_otps — bypasses CF browser block
+  console.log("[OTP] Sending via native host (Python urllib)...");
+  try {
+    const nativeResult = await new Promise((resolve) => {
+      chrome.runtime.sendNativeMessage(
+        "com.umai.otp_helper",
+        {
+          action: "send_otp",
+          api_url: "https://api.letsumai.com/widget/api/v2/email_otps",
+          venue_api_key: apiKey || "",
+          email,
         },
-        args: [email, apiKey || ""],
-      });
-      console.log("[OTP] executeScript results:", JSON.stringify(results));
-      const res = results && results[0] && results[0].result;
-      if (res) {
-        const ok = [200, 201, 204].includes(res.status);
-        if (ok) await chrome.storage.local.set({ otpTriggerTs: Date.now() });
-        const msg = ok
+        (response) => {
+          if (chrome.runtime.lastError) {
+            console.log("[OTP] Native msg error:", chrome.runtime.lastError.message);
+            resolve(null);
+          } else {
+            resolve(response || null);
+          }
+        }
+      );
+    });
+    console.log("[OTP] Native result:", JSON.stringify(nativeResult));
+    if (nativeResult) {
+      const ok = nativeResult.ok || [200, 201, 204].includes(nativeResult.status);
+      if (ok) await chrome.storage.local.set({ otpTriggerTs: Date.now() });
+      return {
+        ok,
+        status: nativeResult.status,
+        msg: ok
           ? `OTP sent to ${email}`
-          : `Failed ${res.status}: ${(res.body || "").slice(0, 120)}`;
-        console.log("[OTP] page fetch result:", msg);
-        return { ok, status: res.status, msg };
-      }
-      console.log("[OTP] executeScript returned no result");
-    } catch (e) {
-      console.log("[OTP] executeScript threw:", e && e.message ? e.message : String(e));
+          : `Failed ${nativeResult.status}: ${(nativeResult.body || "").slice(0, 120)}`,
+      };
     }
+  } catch (e) {
+    console.log("[OTP] Native threw:", e && e.message ? e.message : String(e));
   }
 
-  // Fallback: direct service worker fetch
-  console.log("[OTP] Trying direct SW fetch...");
-  try {
-    const res = await fetch("https://api.letsumai.com/widget/api/v2/email_otps", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        "venue-api-key": apiKey || "",
-      },
-      body: JSON.stringify({ email, locale: "en" }),
-    });
-    const body = await res.text();
-    console.log("[OTP] SW fetch status:", res.status, "body:", body.slice(0, 120));
-    const ok = [200, 201, 204].includes(res.status);
-    if (ok) await chrome.storage.local.set({ otpTriggerTs: Date.now() });
-    return {
-      ok,
-      status: res.status,
-      msg: ok ? `OTP sent to ${email}` : `Failed ${res.status}: ${body.slice(0, 100)}`,
-    };
-  } catch (e) {
-    const msg = String(e && e.message ? e.message : e);
-    console.log("[OTP] SW fetch threw:", msg);
-    return { ok: false, msg: `${msg} — open the UMAI widget tab first, then try again` };
-  }
+  return {
+    ok: false,
+    msg: "Native host unavailable — run install_native.bat first, then reload extension",
+  };
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {

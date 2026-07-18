@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-UMAI extension native messaging host -- reads OTP codes from email via IMAP.
+UMAI extension native messaging host.
+Actions:
+  send_otp  -- POST /widget/api/v2/email_otps via Python requests (bypasses CF browser check)
+  read_otp  -- Poll IMAP for OTP code (default when action missing)
 Chrome native messaging protocol: 4-byte LE length-prefixed JSON on stdin/stdout.
 """
 import sys
@@ -11,6 +14,11 @@ import email as email_lib
 import email.header
 import re
 import time
+try:
+    import urllib.request
+    import urllib.error
+except ImportError:
+    pass
 
 
 def read_msg():
@@ -102,12 +110,46 @@ def find_otp(host, user, password, after_ts_ms, timeout_s):
     return None
 
 
+def send_otp_request(api_url, venue_api_key, email_addr):
+    """POST email_otps via Python urllib (bypasses CF browser challenge)."""
+    url = api_url or "https://api.letsumai.com/widget/api/v2/email_otps"
+    payload = json.dumps({"email": email_addr, "locale": "en"}).encode("utf-8")
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "venue-api-key": venue_api_key or "",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    }
+    req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            body = resp.read().decode("utf-8", errors="ignore")
+            return {"ok": True, "status": resp.status, "body": body[:200]}
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="ignore")
+        return {"ok": False, "status": e.code, "body": body[:200]}
+    except Exception as ex:
+        return {"ok": False, "status": 0, "body": str(ex)}
+
+
 if __name__ == "__main__":
     msg = read_msg()
     if not msg:
         send_msg({"ok": False, "error": "no message received"})
         sys.exit(0)
 
+    action = msg.get("action", "read_otp")
+
+    if action == "send_otp":
+        result = send_otp_request(
+            msg.get("api_url", ""),
+            msg.get("venue_api_key", ""),
+            msg.get("email", ""),
+        )
+        send_msg(result)
+        sys.exit(0)
+
+    # default: read_otp
     code = find_otp(
         msg.get("host", "imap.gmail.com"),
         msg.get("email", ""),
