@@ -190,12 +190,54 @@ async function requestOTP() {
   const { apiKey, huntConfig } = await chrome.storage.local.get(["apiKey", "huntConfig"]);
   const email = huntConfig && huntConfig.email;
   if (!email) return { ok: false, msg: "No email set — open Configure hunt and fill email first." };
+
+  // Fire from a UMAI tab's page context (same as Python bot's page.evaluate)
+  // so the Origin header is reservation.umai.io, not chrome-extension://
+  const umiTabs = await chrome.tabs.query({
+    url: ["https://*.umai.io/*", "https://*.letsumai.com/*"],
+  });
+
+  if (umiTabs.length > 0) {
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: umiTabs[0].id },
+        func: function (emailAddr, venueApiKey) {
+          return fetch("https://api.letsumai.com/widget/api/v2/email_otps", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+              "venue-api-key": venueApiKey || "",
+            },
+            body: JSON.stringify({ email: emailAddr, locale: "en" }),
+          }).then((r) => r.text().then((body) => ({ status: r.status, body })));
+        },
+        args: [email, apiKey || ""],
+      });
+      const res = results && results[0] && results[0].result;
+      if (res) {
+        const ok = [200, 201, 204].includes(res.status);
+        if (ok) await chrome.storage.local.set({ otpTriggerTs: Date.now() });
+        return {
+          ok,
+          status: res.status,
+          msg: ok
+            ? `OTP sent to ${email}`
+            : `Failed ${res.status}: ${(res.body || "").slice(0, 100)}`,
+        };
+      }
+    } catch (e) {
+      // tab inject failed — fall through to direct fetch
+    }
+  }
+
+  // Fallback: direct service worker fetch (may fail due to CORS if no UMAI tab open)
   try {
     const res = await fetch("https://api.letsumai.com/widget/api/v2/email_otps", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Accept": "application/json",
+        Accept: "application/json",
         "venue-api-key": apiKey || "",
       },
       body: JSON.stringify({ email, locale: "en" }),
@@ -211,7 +253,10 @@ async function requestOTP() {
         : `Failed ${res.status}: ${body.slice(0, 100)}`,
     };
   } catch (e) {
-    return { ok: false, msg: String(e && e.message ? e.message : e) };
+    return {
+      ok: false,
+      msg: `${String(e && e.message ? e.message : e)} — open the UMAI widget tab first, then try again`,
+    };
   }
 }
 
