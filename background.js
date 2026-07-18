@@ -204,17 +204,28 @@ async function requestOTP() {
         target: { tabId: umiTabs[0].id },
         world: "MAIN",
         func: function (emailAddr, venueApiKey) {
-          return fetch("https://api.letsumai.com/widget/api/v2/email_otps", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Accept: "application/json",
-              "venue-api-key": venueApiKey || "",
-            },
-            body: JSON.stringify({ email: emailAddr, locale: "en" }),
-          })
-            .then((r) => r.text().then((body) => ({ status: r.status, body })))
-            .catch((e) => ({ status: 0, body: String(e && e.message ? e.message : e) }));
+          // Try same-origin proxy path first (avoids CF on api.letsumai.com),
+          // fall back to direct api.letsumai.com if that 404s
+          const urls = [
+            "/widget/api/v2/email_otps",
+            "https://api.letsumai.com/widget/api/v2/email_otps",
+          ];
+          const headers = {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            "venue-api-key": venueApiKey || "",
+          };
+          const body = JSON.stringify({ email: emailAddr, locale: "en" });
+          function tryNext(i) {
+            if (i >= urls.length) return Promise.resolve({ status: 0, body: "all URLs failed" });
+            return fetch(urls[i], { method: "POST", headers, body })
+              .then((r) => r.text().then((t) => ({ status: r.status, body: t, url: urls[i] })))
+              .catch((e) => {
+                console.log("[OTP-page] URL", urls[i], "failed:", e.message);
+                return tryNext(i + 1);
+              });
+          }
+          return tryNext(0);
         },
         args: [email, apiKey || ""],
       });
