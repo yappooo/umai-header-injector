@@ -10,20 +10,12 @@
 
   const _orig = window.fetch;
 
-  // Ask bridge (ISOLATED world) whether extension has a fresh stored OTP code.
+  // Check stored code directly from window variable — set by background via executeScript.
   function checkStoredCode() {
-    return new Promise((resolve) => {
-      const id = Math.random().toString(36).slice(2);
-      function handler(e) {
-        if (e.source === window && e.data && e.data.__umai_stored_code_response === true && e.data.__id === id) {
-          window.removeEventListener("message", handler);
-          resolve(e.data.code || null);
-        }
-      }
-      window.addEventListener("message", handler);
-      window.postMessage({ __umai_stored_code_check: true, __id: id }, "*");
-      setTimeout(() => { window.removeEventListener("message", handler); resolve(null); }, 500);
-    });
+    const entry = window.__umai_otp_code;
+    if (!entry) return null;
+    if (Date.now() - entry.ts > 600000) return null; // expired
+    return entry.code;
   }
 
   // Ask bridge to send+read a fresh OTP via native host.
@@ -51,15 +43,15 @@
 
     // ── Suppress widget's own /email_otps POST if we have a pre-sent code ──
     if (method === "POST" && url.includes("/email_otps")) {
-      const stored = await checkStoredCode();
+      const stored = checkStoredCode(); // synchronous — no timeout race
       if (stored) {
-        console.log("[OTP-INTERCEPT] Suppressing /email_otps re-send — using pre-sent code:", stored);
+        console.log("[OTP-INTERCEPT] Suppressing /email_otps re-send — pre-sent code valid:", stored);
         return new Response(JSON.stringify({ ok: true, suppressed: true }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
       }
-      // No stored code — let through; autoReadOTPFromIMAP will handle it
+      console.log("[OTP-INTERCEPT] No pre-sent code — letting /email_otps through");
       return _orig.call(this, input, init);
     }
 

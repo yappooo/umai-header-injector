@@ -209,6 +209,22 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
   }
 });
 
+async function setWindowOTPCode(code) {
+  const tabs = await chrome.tabs.query({
+    url: ["https://*.umai.io/*", "https://*.letsumai.com/*"],
+  });
+  for (const tab of tabs) {
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: function (c, ts) { window.__umai_otp_code = { code: c, ts }; },
+        args: [code, Date.now()],
+        world: "MAIN",
+      });
+    } catch (_) {}
+  }
+}
+
 async function tryFillOTPInTab(tabId, code) {
   try {
     const results = await chrome.scripting.executeScript({
@@ -302,6 +318,8 @@ function watchAndFillOTP(code) {
 
   async function tick() {
     if (myVersion !== _otpWatchVersion || Date.now() > deadline) return;
+    // Wait if fresh IMAP read in progress — avoid filling with stale pre-sent code
+    if (_autoOTPRunning) { setTimeout(tick, 1000); return; }
     const tabs = await chrome.tabs.query({
       url: ["https://*.umai.io/*", "https://*.letsumai.com/*"],
     });
@@ -366,7 +384,7 @@ async function requestOTP() {
           otpTriggerTs: Date.now(),
           otpCode: { code, ts: Date.now() },
         });
-        // Watch UMAI tabs for OTP field to appear and auto-fill (30s window)
+        await setWindowOTPCode(code);
         watchAndFillOTP(code);
         return { ok: true, msg: `OTP received — will auto-fill when form appears.` };
       }
@@ -421,6 +439,7 @@ async function autoReadOTPFromIMAP() {
     if (result && result.ok && result.code) {
       console.log("[OTP-AUTO] Got code:", result.code, "— watching for modal...");
       await chrome.storage.local.set({ otpCode: { code: result.code, ts: Date.now() } });
+      await setWindowOTPCode(result.code);
       watchAndFillOTP(result.code);
     } else {
       console.log("[OTP-AUTO] IMAP poll returned:", JSON.stringify(result));
