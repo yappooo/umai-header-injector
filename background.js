@@ -247,47 +247,41 @@ async function tryFillOTPInTab(tabId, code) {
             "value"
           ).set;
 
-          // Try filling first box with full code (React may auto-split on paste)
-          boxes[0].focus();
-          setter.call(boxes[0], otpCode);
-          boxes[0].dispatchEvent(new InputEvent("input", { bubbles: true, data: otpCode }));
-          boxes[0].dispatchEvent(new Event("change", { bubbles: true }));
+          // Strategy 1: paste event on first box — React OTP components split on paste
+          try {
+            boxes[0].focus();
+            const dt = new DataTransfer();
+            dt.setData("text/plain", otpCode);
+            boxes[0].dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: dt }));
+          } catch (_) {}
 
-          // Check if React split it; if not, fill each box individually
-          const allFilled = Array.from(boxes).every(
-            (b, i) => b.value === (digits[i] || "")
-          );
-          if (!allFilled) {
-            boxes.forEach((box, i) => {
-              box.focus();
-              setter.call(box, digits[i] || "");
-              box.dispatchEvent(
-                new InputEvent("input", { bubbles: true, data: digits[i] || "" })
-              );
-              box.dispatchEvent(new Event("change", { bubbles: true }));
-            });
-          }
+          // Give React 100ms to process paste, then verify
+          setTimeout(() => {
+            const allFilled = Array.from(boxes).every((b, i) => b.value === (digits[i] || ""));
+            if (!allFilled) {
+              // Strategy 2: fill each box individually via nativeInputValueSetter
+              boxes.forEach((box, i) => {
+                box.focus();
+                setter.call(box, digits[i] || "");
+                box.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: digits[i] || "" }));
+                box.dispatchEvent(new Event("change", { bubbles: true }));
+              });
+            }
 
-          // Click confirm — poll until enabled (React enables it after state update)
-          const btn = document.querySelector(
-            "button.um-email-otp__confirm, button.um-dialog__button--confirm"
-          );
-          if (btn) {
-            if (!btn.disabled) {
-              btn.click();
-            } else {
+            // Poll confirm button until React enables it (after state update)
+            const btn = document.querySelector(
+              "button.um-email-otp__confirm, button.um-dialog__button--confirm"
+            );
+            if (btn) {
               let tries = 0;
               const iv = setInterval(() => {
                 tries++;
-                if (!btn.disabled) {
-                  btn.click();
-                  clearInterval(iv);
-                } else if (tries > 40) {
-                  clearInterval(iv);
-                }
-              }, 200);
+                if (!btn.disabled) { btn.click(); clearInterval(iv); }
+                else if (tries > 50) clearInterval(iv);
+              }, 100);
             }
-          }
+          }, 100);
+
           return true;
         }
 

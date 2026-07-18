@@ -340,17 +340,20 @@ function fillOTPInPage(code) {
     .filter((b) => b.offsetParent !== null);
   if (boxes.length >= 2) {
     const digits = code.split("");
-    // Try full-code into first box (React may auto-split)
-    boxes[0].focus();
-    setter.call(boxes[0], code);
-    boxes[0].dispatchEvent(new InputEvent("input", { bubbles: true, data: code }));
-    boxes[0].dispatchEvent(new Event("change", { bubbles: true }));
+    // Try paste first — React OTP splits on ClipboardEvent paste
+    try {
+      boxes[0].focus();
+      const dt = new DataTransfer();
+      dt.setData("text/plain", code);
+      boxes[0].dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: dt }));
+    } catch (_) {}
+    // Fallback: per-box fill if paste didn't split
     const allFilled = Array.from(boxes).every((b, i) => b.value === (digits[i] || ""));
     if (!allFilled) {
       boxes.forEach((box, i) => {
         box.focus();
         setter.call(box, digits[i] || "");
-        box.dispatchEvent(new InputEvent("input", { bubbles: true, data: digits[i] || "" }));
+        box.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: digits[i] || "" }));
         box.dispatchEvent(new Event("change", { bubbles: true }));
       });
     }
