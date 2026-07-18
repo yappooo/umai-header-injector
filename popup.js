@@ -188,5 +188,6 @@ getOtpBtn.addEventListener("click", async () => {
   showOtpCode("");
   const res = await chrome.runtime.sendMessage("requestOTP");
   otpStatus.textContent = res ? res.msg : "No response from background.";
+  if (res && res.ok) otpStatus.textContent += " Watching widget tab — will fill automatically.";
   getOtpBtn.disabled = false;
 });

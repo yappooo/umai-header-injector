@@ -190,6 +190,59 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
   }
 });
 
+const OTP_FILL_SELECTOR =
+  "#um-field--email-otp, #um-field--otp, input[id*='otp' i], input[name*='otp' i], " +
+  "input[placeholder*='otp' i], input[placeholder*='verification' i], " +
+  "input[placeholder*='passcode' i], input[placeholder*='code' i]";
+
+async function tryFillOTPInTab(tabId, code) {
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: function (otpCode, sel) {
+        const field = document.querySelector(sel);
+        if (!field) return false;
+        field.value = otpCode;
+        field.dispatchEvent(new Event("input", { bubbles: true }));
+        field.dispatchEvent(new Event("change", { bubbles: true }));
+        const btn = document.querySelector(
+          "footer.ums-footer button[type='submit'], button[type='submit']"
+        );
+        if (btn) btn.click();
+        return true;
+      },
+      args: [code, OTP_FILL_SELECTOR],
+      world: "MAIN",
+    });
+    return results && results[0] && results[0].result === true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function watchAndFillOTP(code) {
+  const deadline = Date.now() + 30000;
+  let done = false;
+
+  async function tick() {
+    if (done || Date.now() > deadline) return;
+    const tabs = await chrome.tabs.query({
+      url: ["https://*.umai.io/*", "https://*.letsumai.com/*"],
+    });
+    for (const tab of tabs) {
+      const filled = await tryFillOTPInTab(tab.id, code);
+      if (filled) {
+        console.log("[OTP] Auto-filled into tab", tab.id, tab.url);
+        done = true;
+        return;
+      }
+    }
+    setTimeout(tick, 1000);
+  }
+
+  tick();
+}
+
 async function requestOTP() {
   const { apiKey, huntConfig } = await chrome.storage.local.get(["apiKey", "huntConfig"]);
   const email = huntConfig && huntConfig.email;
@@ -236,36 +289,9 @@ async function requestOTP() {
           otpTriggerTs: Date.now(),
           otpCode: { code, ts: Date.now() },
         });
-        // Auto-fill into open UMAI tab
-        const fillTabs = await chrome.tabs.query({
-          url: ["https://*.umai.io/*", "https://*.letsumai.com/*"],
-        });
-        if (fillTabs.length > 0) {
-          try {
-            await chrome.scripting.executeScript({
-              target: { tabId: fillTabs[0].id },
-              func: function (otpCode) {
-                const field = document.querySelector(
-                  "#um-field--email-otp, #um-field--otp, input[id*='otp' i], input[name*='otp' i], input[placeholder*='otp' i], input[placeholder*='verification' i], input[placeholder*='passcode' i], input[placeholder*='code' i]"
-                );
-                if (!field) return false;
-                field.value = otpCode;
-                field.dispatchEvent(new Event("input", { bubbles: true }));
-                field.dispatchEvent(new Event("change", { bubbles: true }));
-                const btn = document.querySelector(
-                  "footer.ums-footer button[type='submit'], button[type='submit']"
-                );
-                if (btn) btn.click();
-                return true;
-              },
-              args: [code],
-              world: "MAIN",
-            });
-          } catch (e) {
-            console.log("[OTP] Auto-fill failed:", e && e.message ? e.message : e);
-          }
-        }
-        return { ok: true, msg: `OTP ${code} filled into widget.` };
+        // Watch UMAI tabs for OTP field to appear and auto-fill (30s window)
+        watchAndFillOTP(code);
+        return { ok: true, msg: `OTP received — will auto-fill when form appears.` };
       }
       return { ok: false, msg: nativeResult.error || `Failed: ${(nativeResult.body || "").slice(0, 120)}` };
     }
