@@ -296,20 +296,20 @@ async function tryFillOTPInTab(tabId, code) {
 }
 
 function watchAndFillOTP(code) {
-  // Short active poll (30s) — onUpdated covers the rest of the 10min window
+  // Increment version — cancels any previously running watcher
+  const myVersion = ++_otpWatchVersion;
   const deadline = Date.now() + 30000;
-  let done = false;
 
   async function tick() {
-    if (done || Date.now() > deadline) return;
+    if (myVersion !== _otpWatchVersion || Date.now() > deadline) return;
     const tabs = await chrome.tabs.query({
       url: ["https://*.umai.io/*", "https://*.letsumai.com/*"],
     });
     for (const tab of tabs) {
+      if (myVersion !== _otpWatchVersion) return; // cancelled
       const filled = await tryFillOTPInTab(tab.id, code);
       if (filled) {
-        console.log("[OTP] Auto-filled into tab", tab.id, tab.url);
-        done = true;
+        console.log("[OTP] Auto-filled into tab", tab.id, tab.url, "code:", code);
         await chrome.storage.local.remove("otpCode");
         return;
       }
@@ -383,6 +383,7 @@ async function requestOTP() {
 }
 
 let _autoOTPRunning = false;
+let _otpWatchVersion = 0;
 
 async function autoReadOTPFromIMAP() {
   if (_autoOTPRunning) return; // already polling
