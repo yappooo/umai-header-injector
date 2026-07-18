@@ -14,11 +14,11 @@ import email as email_lib
 import email.header
 import re
 import time
-try:
-    import urllib.request
-    import urllib.error
-except ImportError:
-    pass
+import hashlib
+import base64
+import urllib.request
+import urllib.error
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 def read_msg():
@@ -110,26 +110,108 @@ def find_otp(host, user, password, after_ts_ms, timeout_s):
     return None
 
 
+_BASE = "https://letsumai.com"
+_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+
+
+def _http_get(url, headers):
+    req = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return resp.status, resp.read().decode("utf-8", errors="ignore")
+
+
+def _http_post(url, headers, payload_bytes):
+    req = urllib.request.Request(url, data=payload_bytes, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return resp.status, resp.read().decode("utf-8", errors="ignore")
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode("utf-8", errors="ignore")
+
+
+def _altcha_worker(salt, target, lo, hi, stop):
+    for n in range(lo, hi):
+        if stop[0]:
+            return None
+        if hashlib.sha256(f"{salt}{n}".encode()).hexdigest() == target:
+            stop[0] = True
+            return n
+    return None
+
+
+def solve_altcha(data):
+    salt = data["salt"]
+    challenge = data["challenge"]
+    maxn = int(data.get("maxnumber", 1_000_000))
+    import os
+    workers = max(4, os.cpu_count() or 4)
+    chunk = max(1, (maxn + 1) // workers)
+    stop = [False]
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = [ex.submit(_altcha_worker, salt, challenge,
+                          i * chunk, min((i + 1) * chunk, maxn + 1), stop)
+                for i in range(workers)]
+        n_found = None
+        for f in as_completed(futs):
+            v = f.result()
+            if v is not None:
+                n_found = v
+                stop[0] = True
+                break
+    if n_found is None:
+        return None
+    sol = {k: data[k] for k in ("algorithm", "challenge", "salt", "signature")}
+    sol["number"] = n_found
+    return base64.b64encode(json.dumps(sol, separators=(",", ":")).encode()).decode()
+
+
+def get_altcha_jwt(venue_api_key):
+    headers = {"Accept": "application/json", "venue-api-key": venue_api_key or "", "User-Agent": _UA}
+    status, body = _http_get(f"{_BASE}/widget/api/v2/altcha/challenge", headers)
+    if status != 200:
+        return None, f"challenge {status}: {body[:100]}"
+    challenge = json.loads(body)
+    solution = solve_altcha(challenge)
+    if not solution:
+        return None, "PoW solve failed"
+    post_h = {**headers, "Content-Type": "application/json"}
+    status2, body2 = _http_post(
+        f"{_BASE}/widget/api/v2/altcha/verify", post_h,
+        json.dumps({"solution": solution}).encode(),
+    )
+    if status2 == 200:
+        d = json.loads(body2)
+        jwt = d.get("token") or d.get("jwt") or (d.get("data") or {}).get("token") or ""
+        if jwt:
+            return jwt, None
+    # raw fallback
+    status3, body3 = _http_post(
+        f"{_BASE}/widget/api/v2/altcha/verify",
+        {**headers, "Content-Type": "text/plain"}, solution.encode(),
+    )
+    if status3 == 200:
+        d3 = json.loads(body3)
+        jwt3 = d3.get("token") or d3.get("jwt") or ""
+        if jwt3:
+            return jwt3, None
+    return None, f"verify {status2}: {body2[:100]}"
+
+
 def send_otp_request(api_url, venue_api_key, email_addr):
-    """POST email_otps via Python urllib (bypasses CF browser challenge)."""
-    url = api_url or "https://letsumai.com/widget/api/v2/email_otps"
-    payload = json.dumps({"email": email_addr, "locale": "en"}).encode("utf-8")
+    """Solve ALTCHA then POST email_otps — same flow as Python bot."""
+    url = api_url or f"{_BASE}/widget/api/v2/email_otps"
+    jwt, err = get_altcha_jwt(venue_api_key)
+    if not jwt:
+        return {"ok": False, "status": 0, "body": f"ALTCHA failed: {err}"}
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json",
         "venue-api-key": venue_api_key or "",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "X-Altcha-Token": jwt,
+        "User-Agent": _UA,
     }
-    req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            body = resp.read().decode("utf-8", errors="ignore")
-            return {"ok": True, "status": resp.status, "body": body[:200]}
-    except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", errors="ignore")
-        return {"ok": False, "status": e.code, "body": body[:200]}
-    except Exception as ex:
-        return {"ok": False, "status": 0, "body": str(ex)}
+    status, body = _http_post(url, headers, json.dumps({"email": email_addr, "locale": "en"}).encode())
+    return {"ok": status in (200, 201, 204), "status": status, "body": body[:200]}
 
 
 if __name__ == "__main__":
