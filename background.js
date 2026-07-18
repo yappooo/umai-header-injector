@@ -189,15 +189,16 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
 async function requestOTP() {
   const { apiKey, huntConfig } = await chrome.storage.local.get(["apiKey", "huntConfig"]);
   const email = huntConfig && huntConfig.email;
+  console.log("[OTP] requestOTP start — email:", email, "apiKey len:", (apiKey || "").length);
   if (!email) return { ok: false, msg: "No email set — open Configure hunt and fill email first." };
 
-  // Fire from a UMAI tab's page context (same as Python bot's page.evaluate)
-  // so the Origin header is reservation.umai.io, not chrome-extension://
   const umiTabs = await chrome.tabs.query({
     url: ["https://*.umai.io/*", "https://*.letsumai.com/*"],
   });
+  console.log("[OTP] UMAI tabs found:", umiTabs.length, umiTabs.map(t => t.url));
 
   if (umiTabs.length > 0) {
+    console.log("[OTP] Firing from tab", umiTabs[0].id, umiTabs[0].url);
     try {
       const results = await chrome.scripting.executeScript({
         target: { tabId: umiTabs[0].id },
@@ -210,28 +211,31 @@ async function requestOTP() {
               "venue-api-key": venueApiKey || "",
             },
             body: JSON.stringify({ email: emailAddr, locale: "en" }),
-          }).then((r) => r.text().then((body) => ({ status: r.status, body })));
+          })
+            .then((r) => r.text().then((body) => ({ status: r.status, body })))
+            .catch((e) => ({ status: 0, body: String(e && e.message ? e.message : e) }));
         },
         args: [email, apiKey || ""],
       });
+      console.log("[OTP] executeScript results:", JSON.stringify(results));
       const res = results && results[0] && results[0].result;
       if (res) {
         const ok = [200, 201, 204].includes(res.status);
         if (ok) await chrome.storage.local.set({ otpTriggerTs: Date.now() });
-        return {
-          ok,
-          status: res.status,
-          msg: ok
-            ? `OTP sent to ${email}`
-            : `Failed ${res.status}: ${(res.body || "").slice(0, 100)}`,
-        };
+        const msg = ok
+          ? `OTP sent to ${email}`
+          : `Failed ${res.status}: ${(res.body || "").slice(0, 120)}`;
+        console.log("[OTP] page fetch result:", msg);
+        return { ok, status: res.status, msg };
       }
+      console.log("[OTP] executeScript returned no result");
     } catch (e) {
-      // tab inject failed — fall through to direct fetch
+      console.log("[OTP] executeScript threw:", e && e.message ? e.message : String(e));
     }
   }
 
-  // Fallback: direct service worker fetch (may fail due to CORS if no UMAI tab open)
+  // Fallback: direct service worker fetch
+  console.log("[OTP] Trying direct SW fetch...");
   try {
     const res = await fetch("https://api.letsumai.com/widget/api/v2/email_otps", {
       method: "POST",
@@ -243,20 +247,18 @@ async function requestOTP() {
       body: JSON.stringify({ email, locale: "en" }),
     });
     const body = await res.text();
+    console.log("[OTP] SW fetch status:", res.status, "body:", body.slice(0, 120));
     const ok = [200, 201, 204].includes(res.status);
     if (ok) await chrome.storage.local.set({ otpTriggerTs: Date.now() });
     return {
       ok,
       status: res.status,
-      msg: ok
-        ? `OTP sent to ${email}`
-        : `Failed ${res.status}: ${body.slice(0, 100)}`,
+      msg: ok ? `OTP sent to ${email}` : `Failed ${res.status}: ${body.slice(0, 100)}`,
     };
   } catch (e) {
-    return {
-      ok: false,
-      msg: `${String(e && e.message ? e.message : e)} — open the UMAI widget tab first, then try again`,
-    };
+    const msg = String(e && e.message ? e.message : e);
+    console.log("[OTP] SW fetch threw:", msg);
+    return { ok: false, msg: `${msg} — open the UMAI widget tab first, then try again` };
   }
 }
 
