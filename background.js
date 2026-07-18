@@ -138,6 +138,10 @@ async function autoClickReserve(tabId) {
 
 chrome.webRequest.onSendHeaders.addListener(
   async (details) => {
+    // Log every API call URL so we can identify the real endpoint domain
+    if (details.url.includes("/widget/api/")) {
+      console.log("[WEBREQ]", details.method, details.url);
+    }
     const { harvest } = await chrome.storage.local.get("harvest");
     if (!harvest || harvest.tabId !== details.tabId || harvest.status === "done") return;
     const h = (details.requestHeaders || []).find(
