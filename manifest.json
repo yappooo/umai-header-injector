@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "UMAI Venue API Header Injector",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "description": "Auto-fills and grabs keys for the UMAI reservation widget, stops before payment.",
-  "permissions": ["declarativeNetRequest", "storage", "webRequest", "tabs", "scripting", "notifications"],
+  "permissions": ["declarativeNetRequest", "storage", "webRequest", "tabs", "scripting", "notifications", "nativeMessaging"],
   "host_permissions": [
     "https://*.umai.io/*",
     "https://*.letsumai.com/*"

@@ -144,10 +144,26 @@
     <label>Phone</label>
     <input id="phone" type="text" />
 
+    <h2>Email OTP (IMAP)</h2>
+    <label>IMAP Host</label>
+    <input id="imapHost" type="text" placeholder="imap.gmail.com" />
+    <label>App Password (Gmail: 16-char app password, not your login password)</label>
+    <input id="imapPassword" type="password" placeholder="xxxx xxxx xxxx xxxx" />
+
+    <div class="warning">
+      ⚠ IMAP password stored locally in Chrome (unencrypted on disk). Use a
+      Gmail App Password — not your main Google password.
+    </div>
+
     <div class="warning">
       ℹ Hunt stops once the slot is secured and Stripe checkout loads — pay
       manually from there. No card details are collected or stored.
     </div>
+
+    <h2>Extension Setup</h2>
+    <label>Extension ID (needed for install_native.bat)</label>
+    <input id="extId" type="text" readonly style="cursor:pointer" title="Click to copy" />
+
 
     <button id="save">SAVE CONFIG</button>
     <div id="status"></div>

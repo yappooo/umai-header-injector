@@ -186,8 +186,41 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
   }
 });
 
-chrome.runtime.onMessage.addListener((msg) => {
+async function requestOTP() {
+  const { apiKey, huntConfig } = await chrome.storage.local.get(["apiKey", "huntConfig"]);
+  const email = huntConfig && huntConfig.email;
+  if (!email) return { ok: false, msg: "No email set — open Configure hunt and fill email first." };
+  try {
+    const res = await fetch("https://api.letsumai.com/widget/api/v2/email_otps", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "venue-api-key": apiKey || "",
+      },
+      body: JSON.stringify({ email, locale: "en" }),
+    });
+    const body = await res.text();
+    const ok = [200, 201, 204].includes(res.status);
+    if (ok) await chrome.storage.local.set({ otpTriggerTs: Date.now() });
+    return {
+      ok,
+      status: res.status,
+      msg: ok
+        ? `OTP sent to ${email}`
+        : `Failed ${res.status}: ${body.slice(0, 100)}`,
+    };
+  } catch (e) {
+    return { ok: false, msg: String(e && e.message ? e.message : e) };
+  }
+}
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg === "startHarvest") startHarvest();
   if (msg === "startHunt" && typeof startHunt === "function") startHunt();
   if (msg === "stopHunt" && typeof stopHunt === "function") stopHunt();
+  if (msg === "requestOTP") {
+    requestOTP().then(sendResponse);
+    return true;
+  }
 });

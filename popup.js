@@ -78,6 +78,8 @@ const HUNT_STATUS_TEXT = {
   "form-filling": "Filling contact form...",
   "submitting-checkout": "Submitting checkout...",
   "awaiting-stripe-frame": "Waiting for Stripe checkout to load...",
+  "waiting-otp": "OTP required — reading from email...",
+  "filling-otp": "OTP received — filling code...",
   success: "Slot secured — pay manually!",
   failed: "Failed.",
   timeout: "Timed out.",
@@ -95,6 +97,8 @@ const HUNT_ACTIVE_STATUSES = new Set([
   "form-filling",
   "submitting-checkout",
   "awaiting-stripe-frame",
+  "waiting-otp",
+  "filling-otp",
 ]);
 
 function renderHunt(hunt) {
@@ -143,4 +147,16 @@ startHuntBtn.addEventListener("click", async () => {
 
 stopHuntBtn.addEventListener("click", () => {
   chrome.runtime.sendMessage("stopHunt");
+});
+
+// ── OTP ───────────────────────────────────────────────────────────────────
+const getOtpBtn = document.getElementById("getOtp");
+const otpStatus = document.getElementById("otpStatus");
+
+getOtpBtn.addEventListener("click", async () => {
+  getOtpBtn.disabled = true;
+  otpStatus.textContent = "Sending OTP request...";
+  const res = await chrome.runtime.sendMessage("requestOTP");
+  otpStatus.textContent = res ? res.msg : "No response from background.";
+  getOtpBtn.disabled = false;
 });

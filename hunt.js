@@ -304,14 +304,18 @@ function submitCheckoutInPage() {
       const frame = document.querySelector(
         "iframe[title*='Secure payment input frame' i], iframe[title*='stripe' i], iframe[src*='stripe.com'], iframe[src*='js.stripe.com']"
       );
-      // ~10s — checkout transition (network + Stripe Elements mount) is
-      // slower than the slot-click verify step.
+      const otpField = document.querySelector(
+        "#um-field--email-otp, #um-field--otp, input[id*='otp' i], input[name*='otp' i], input[placeholder*='otp' i], input[placeholder*='verification' i], input[placeholder*='passcode' i]"
+      );
       if (err) {
         clearInterval(iv);
         resolve({ lost: true, errorText: (err.textContent || "").trim() });
       } else if (frame) {
         clearInterval(iv);
         resolve({ stripeIframePresent: true });
+      } else if (otpField) {
+        clearInterval(iv);
+        resolve({ otpRequired: true });
       } else if (tries > 100) {
         clearInterval(iv);
         const allIframes = Array.from(document.querySelectorAll("iframe")).map(
@@ -324,6 +328,76 @@ function submitCheckoutInPage() {
         });
       }
     }, 100);
+  });
+}
+
+function fillOTPInPage(code) {
+  const field = document.querySelector(
+    "#um-field--email-otp, #um-field--otp, input[id*='otp' i], input[name*='otp' i], input[placeholder*='otp' i], input[placeholder*='verification' i], input[placeholder*='passcode' i]"
+  );
+  if (!field) return { filled: false };
+  field.value = code;
+  field.dispatchEvent(new Event("input", { bubbles: true }));
+  field.dispatchEvent(new Event("change", { bubbles: true }));
+  return { filled: true };
+}
+
+function waitForStripeAfterOTPInPage() {
+  // After filling OTP and clicking submit, wait for Stripe or error
+  const btn = document.querySelector(
+    "footer.ums-footer button[type='submit'], button[type='submit']"
+  );
+  if (btn) btn.click();
+  return new Promise((resolve) => {
+    let tries = 0;
+    const iv = setInterval(() => {
+      tries++;
+      const err = document.querySelector(".um-widget-error");
+      const frame = document.querySelector(
+        "iframe[title*='Secure payment input frame' i], iframe[title*='stripe' i], iframe[src*='stripe.com'], iframe[src*='js.stripe.com']"
+      );
+      if (err) {
+        clearInterval(iv);
+        resolve({ lost: true, errorText: (err.textContent || "").trim() });
+      } else if (frame) {
+        clearInterval(iv);
+        resolve({ stripeIframePresent: true });
+      } else if (tries > 100) {
+        clearInterval(iv);
+        resolve({ stripeIframePresent: false });
+      }
+    }, 100);
+  });
+}
+
+// ── Native OTP reader ────────────────────────────────────────────────────
+// Calls otp_helper.py via Chrome native messaging (install_native.bat sets it up).
+// Returns { ok, code } or null on error.
+function readOTPViaNative(cfg, afterTs) {
+  return new Promise((resolve) => {
+    try {
+      chrome.runtime.sendNativeMessage(
+        "com.umai.otp_helper",
+        {
+          host: cfg.imapHost || "imap.gmail.com",
+          email: cfg.email || "",
+          password: cfg.imapPassword || "",
+          after_ts: afterTs || Date.now() - 60000,
+          timeout: 120,
+        },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            console.log("[OTP] Native messaging error:", chrome.runtime.lastError.message);
+            resolve(null);
+            return;
+          }
+          resolve(response || null);
+        }
+      );
+    } catch (e) {
+      console.log("[OTP] sendNativeMessage exception:", e);
+      resolve(null);
+    }
   });
 }
 
@@ -598,6 +672,43 @@ async function runHuntLoop(tabId, myToken, cfg) {
       }
       continue;
     }
+
+    // OTP required — read from email via native IMAP helper, fill and resubmit
+    if (checkout && checkout.otpRequired) {
+      await setHunt({ status: "waiting-otp" }, "OTP field detected — reading code from email via IMAP...");
+      const { otpTriggerTs } = await chrome.storage.local.get("otpTriggerTs");
+      const otpResult = await readOTPViaNative(cfg, otpTriggerTs || Date.now() - 120000);
+      if (!otpResult || !otpResult.code) {
+        const errMsg = otpResult ? otpResult.error : "Native messaging unavailable (run install_native.bat first)";
+        await setHunt({ status: "failed", detail: `OTP not received: ${errMsg}` }, `OTP read failed: ${errMsg}`);
+        await notifyHuntResult("failed", `OTP not received: ${errMsg}`);
+        return;
+      }
+      await setHunt({ status: "filling-otp" }, `OTP received: ${otpResult.code} — filling...`);
+      await exec(tabId, fillOTPInPage, [otpResult.code]);
+      await sleep(400);
+      const afterOtp = await exec(tabId, waitForStripeAfterOTPInPage);
+      if (afterOtp && afterOtp.lost) {
+        await setHunt({ status: "slot-lost-retry" }, `Lost slot after OTP: ${afterOtp.errorText || ""}. Re-hunting...`);
+        if (!cfg.disableAutoRefresh) {
+          await chrome.tabs.reload(tabId);
+          await sleep(800);
+        }
+        continue;
+      }
+      if (!afterOtp || !afterOtp.stripeIframePresent) {
+        await setHunt({ status: "failed", detail: "Stripe checkout never loaded after OTP." }, "Stripe iframe missing after OTP fill.");
+        await notifyHuntResult("failed", "Stripe not loaded after OTP.");
+        return;
+      }
+      await setHunt(
+        { status: "success", detail: "OTP filled — Stripe checkout loaded, pay manually." },
+        `Slot secured at ${slotResult.bestSlotText} — OTP filled, pay manually.`
+      );
+      await notifyHuntResult("success", `Slot secured at ${slotResult.bestSlotText} — pay manually.`);
+      return;
+    }
+
     if (!checkout || !checkout.stripeIframePresent) {
       const debugMsg = checkout
         ? `Stripe iframe never appeared (submit clicked: ${checkout.submitButtonClicked}, iframes on page: ${JSON.stringify(

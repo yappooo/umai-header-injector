@@ -13,6 +13,8 @@ const FIELDS = {
   lname: "text",
   email: "text",
   phone: "text",
+  imapHost: "text",
+  imapPassword: "text",
 };
 
 function getEl(id) {
@@ -39,6 +41,8 @@ async function load() {
   getEl("lname").value = huntConfig.lname || "";
   getEl("email").value = huntConfig.email || "";
   getEl("phone").value = huntConfig.phone || "";
+  getEl("imapHost").value = huntConfig.imapHost || "imap.gmail.com";
+  getEl("imapPassword").value = huntConfig.imapPassword || "";
 }
 
 async function save() {
@@ -57,6 +61,8 @@ async function save() {
     lname: getEl("lname").value.trim(),
     email: getEl("email").value.trim(),
     phone: getEl("phone").value.trim(),
+    imapHost: getEl("imapHost").value.trim() || "imap.gmail.com",
+    imapPassword: getEl("imapPassword").value,
   };
   await chrome.storage.local.set({ huntConfig });
   getEl("status").textContent = "Saved.";
@@ -78,3 +84,15 @@ Object.keys(FIELDS).forEach((id) => {
 });
 
 load();
+
+// Show extension ID (for install_native.bat)
+const extIdEl = getEl("extId");
+if (extIdEl) {
+  extIdEl.value = chrome.runtime.id;
+  extIdEl.addEventListener("click", () => {
+    extIdEl.select();
+    document.execCommand("copy");
+    extIdEl.title = "Copied!";
+    setTimeout(() => { extIdEl.title = "Click to copy"; }, 1500);
+  });
+}
