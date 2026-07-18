@@ -167,6 +167,19 @@ chrome.webRequest.onSendHeaders.addListener(
 // any) owns the tab — harvest and hunt never run on the same tab at once.
 
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
+  // Opportunistically fill OTP modal if stored code is fresh (10 min window)
+  if (changeInfo.status === "complete" || changeInfo.title) {
+    const { otpCode } = await chrome.storage.local.get("otpCode");
+    if (otpCode && otpCode.code && Date.now() - otpCode.ts < 600000) {
+      tryFillOTPInTab(tabId, otpCode.code).then((filled) => {
+        if (filled) {
+          console.log("[OTP] onUpdated auto-filled tab", tabId);
+          chrome.storage.local.remove("otpCode");
+        }
+      });
+    }
+  }
+
   if (!changeInfo.title) return;
   const cf = isCloudflareTitle(changeInfo.title);
 
@@ -283,7 +296,8 @@ async function tryFillOTPInTab(tabId, code) {
 }
 
 function watchAndFillOTP(code) {
-  const deadline = Date.now() + 60000; // 60s window — modal may take time to appear
+  // Short active poll (30s) — onUpdated covers the rest of the 10min window
+  const deadline = Date.now() + 30000;
   let done = false;
 
   async function tick() {
@@ -296,6 +310,7 @@ function watchAndFillOTP(code) {
       if (filled) {
         console.log("[OTP] Auto-filled into tab", tab.id, tab.url);
         done = true;
+        await chrome.storage.local.remove("otpCode");
         return;
       }
     }
