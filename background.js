@@ -202,6 +202,7 @@ async function requestOTP() {
     try {
       const results = await chrome.scripting.executeScript({
         target: { tabId: umiTabs[0].id },
+        world: "MAIN",
         func: function (emailAddr, venueApiKey) {
           return fetch("https://api.letsumai.com/widget/api/v2/email_otps", {
             method: "POST",
