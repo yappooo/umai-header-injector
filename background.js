@@ -143,9 +143,15 @@ chrome.webRequest.onSendHeaders.addListener(
       console.log("[WEBREQ]", details.method, details.url);
     }
 
-    // Widget sent OTP to user's email — auto-start IMAP polling immediately
-    if (details.method === "POST" && details.url.includes("/email_otps")) {
-      autoReadOTPFromIMAP();
+    // Widget about to send /email_otps — block stale pre-sent watcher immediately
+    // OPTIONS fires before POST and before modal appears, giving us time to pause
+    if (details.url.includes("/email_otps")) {
+      if (details.method === "OPTIONS") {
+        _autoOTPRunning = true;
+        console.log("[OTP-AUTO] OPTIONS /email_otps — blocking stale watcher");
+      } else if (details.method === "POST") {
+        autoReadOTPFromIMAP();
+      }
     }
 
     const { harvest } = await chrome.storage.local.get("harvest");
@@ -231,7 +237,9 @@ async function tryFillOTPInTab(tabId, code) {
       target: { tabId },
       func: function (otpCode) {
         // Split-box OTP modal (.um-otp-input__box — one digit per box)
-        const boxes = document.querySelectorAll(".um-otp-input__box");
+        // Only match when modal is visible (offsetParent != null means visible)
+        const allBoxes = document.querySelectorAll(".um-otp-input__box");
+        const boxes = Array.from(allBoxes).filter((b) => b.offsetParent !== null);
         if (boxes.length >= 2) {
           const digits = otpCode.split("");
           const setter = Object.getOwnPropertyDescriptor(

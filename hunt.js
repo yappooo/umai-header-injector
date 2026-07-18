@@ -335,8 +335,9 @@ function submitCheckoutInPage() {
 function fillOTPInPage(code) {
   const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
 
-  // Split-box OTP modal
-  const boxes = document.querySelectorAll(".um-otp-input__box");
+  // Split-box OTP modal — only when visible
+  const boxes = Array.from(document.querySelectorAll(".um-otp-input__box"))
+    .filter((b) => b.offsetParent !== null);
   if (boxes.length >= 2) {
     const digits = code.split("");
     // Try full-code into first box (React may auto-split)
