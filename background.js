@@ -173,10 +173,14 @@ chrome.webRequest.onSendHeaders.addListener(
 // any) owns the tab — harvest and hunt never run on the same tab at once.
 
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
-  // Opportunistically fill OTP modal if stored code is fresh (10 min window)
+  // Restore window.__umai_otp_code after page reload (date change = full navigation)
+  // and opportunistically fill OTP modal if code is fresh (10 min window)
   if (changeInfo.status === "complete" || changeInfo.title) {
     const { otpCode } = await chrome.storage.local.get("otpCode");
     if (otpCode && otpCode.code && Date.now() - otpCode.ts < 600000) {
+      // Re-inject window var so otp_interceptor.js can suppress /email_otps
+      // even after a page reload (e.g. user changed booking date)
+      setWindowOTPCode(otpCode.code).catch(() => {});
       tryFillOTPInTab(tabId, otpCode.code).then((filled) => {
         if (filled) {
           console.log("[OTP] onUpdated auto-filled tab", tabId);
