@@ -142,6 +142,12 @@ chrome.webRequest.onSendHeaders.addListener(
     if (details.url.includes("/widget/api/")) {
       console.log("[WEBREQ]", details.method, details.url);
     }
+
+    // Widget sent OTP to user's email — auto-start IMAP polling immediately
+    if (details.method === "POST" && details.url.includes("/email_otps")) {
+      autoReadOTPFromIMAP();
+    }
+
     const { harvest } = await chrome.storage.local.get("harvest");
     if (!harvest || harvest.tabId !== details.tabId || harvest.status === "done") return;
     const h = (details.requestHeaders || []).find(
@@ -359,6 +365,53 @@ async function requestOTP() {
     ok: false,
     msg: "Native host unavailable — run install_native.bat first, then reload extension",
   };
+}
+
+let _autoOTPRunning = false;
+
+async function autoReadOTPFromIMAP() {
+  if (_autoOTPRunning) return; // already polling
+  const { huntConfig, apiKey } = await chrome.storage.local.get(["huntConfig", "apiKey"]);
+  const imapPwd = huntConfig && huntConfig.imapPassword;
+  if (!imapPwd) return; // IMAP not configured — skip silently
+
+  _autoOTPRunning = true;
+  const triggerTs = Date.now();
+  console.log("[OTP-AUTO] Widget sent email_otps — starting IMAP poll...");
+
+  try {
+    const result = await new Promise((resolve) => {
+      chrome.runtime.sendNativeMessage(
+        "com.umai.otp_helper",
+        {
+          action: "read_otp",
+          imap_host: huntConfig.imapHost || "imap.gmail.com",
+          imap_user: huntConfig.imapUser || huntConfig.email || "",
+          imap_password: imapPwd,
+          after_ts: triggerTs,
+          timeout: 120,
+        },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            console.log("[OTP-AUTO] Native error:", chrome.runtime.lastError.message);
+            resolve(null);
+          } else {
+            resolve(response || null);
+          }
+        }
+      );
+    });
+
+    if (result && result.ok && result.code) {
+      console.log("[OTP-AUTO] Got code:", result.code, "— watching for modal...");
+      await chrome.storage.local.set({ otpCode: { code: result.code, ts: Date.now() } });
+      watchAndFillOTP(result.code);
+    } else {
+      console.log("[OTP-AUTO] IMAP poll returned:", JSON.stringify(result));
+    }
+  } finally {
+    _autoOTPRunning = false;
+  }
 }
 
 async function requestOTPBackground() {
