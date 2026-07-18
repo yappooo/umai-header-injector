@@ -209,7 +209,7 @@ async function requestOTP() {
         "com.umai.otp_helper",
         {
           action: "send_otp",
-          api_url: "https://api.letsumai.com/widget/api/v2/email_otps",
+          api_url: "https://letsumai.com/widget/api/v2/email_otps",
           venue_api_key: apiKey || "",
           email,
         },

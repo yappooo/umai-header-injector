@@ -112,7 +112,7 @@ def find_otp(host, user, password, after_ts_ms, timeout_s):
 
 def send_otp_request(api_url, venue_api_key, email_addr):
     """POST email_otps via Python urllib (bypasses CF browser challenge)."""
-    url = api_url or "https://api.letsumai.com/widget/api/v2/email_otps"
+    url = api_url or "https://letsumai.com/widget/api/v2/email_otps"
     payload = json.dumps({"email": email_addr, "locale": "en"}).encode("utf-8")
     headers = {
         "Content-Type": "application/json",
